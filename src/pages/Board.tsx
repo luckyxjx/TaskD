@@ -154,6 +154,18 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const createCard = async () => {
     if (!newCardTitle.trim() || !selectedListId) return;
 
+    // Check for duplicate card title in this list
+    const { data: existing, error: checkError } = await supabase
+      .from('cards')
+      .select('id')
+      .eq('list_id', selectedListId)
+      .ilike('title', newCardTitle.trim());
+
+    if (!checkError && existing && existing.length > 0) {
+      alert('A card with this title already exists in this list!');
+      return;
+    }
+
     const listCards = cards.filter((c) => c.list_id === selectedListId);
     const maxPosition = listCards.reduce((max, card) => Math.max(max, card.position), -1);
 
