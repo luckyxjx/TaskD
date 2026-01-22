@@ -72,13 +72,17 @@ export function CardComments({ cardId }: CardCommentsProps) {
     // Fetch user emails for each comment
     const commentsWithEmails = await Promise.all(
       (data || []).map(async (comment) => {
-        const email = await supabase.rpc('get_user_email', {
+        const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
           user_uuid: comment.user_id
         });
+
+        if (emailError) {
+          console.error('Error fetching user email:', emailError);
+        }
         
         return {
           ...comment,
-          user_email: email.data || 'Unknown User'
+          user_email: emailData || 'Unknown User'
         };
       })
     );

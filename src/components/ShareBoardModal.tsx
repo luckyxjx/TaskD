@@ -41,15 +41,17 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
     // Get user emails
     const membersWithEmails = await Promise.all(
       (data || []).map(async (member) => {
-        const { data: userData } = await supabase
-          .from('auth.users')
-          .select('email')
-          .eq('id', member.user_id)
-          .single();
+        const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
+          user_uuid: member.user_id
+        });
+
+        if (emailError) {
+          console.error('Error fetching user email:', emailError);
+        }
         
         return {
           ...member,
-          email: userData?.email || 'Unknown'
+          email: emailData || 'Unknown'
         };
       })
     );

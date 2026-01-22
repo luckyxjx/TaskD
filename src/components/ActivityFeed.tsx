@@ -70,13 +70,17 @@ export function ActivityFeed({ boardId, limit = 20 }: ActivityFeedProps) {
           return { ...activity, user_email: 'System' };
         }
 
-        const email = await supabase.rpc('get_user_email', {
+        const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
           user_uuid: activity.user_id
         });
+
+        if (emailError) {
+          console.error('Error fetching user email:', emailError);
+        }
         
         return {
           ...activity,
-          user_email: email.data || 'Unknown User'
+          user_email: emailData || 'Unknown User'
         };
       })
     );
@@ -85,7 +89,7 @@ export function ActivityFeed({ boardId, limit = 20 }: ActivityFeedProps) {
     setLoading(false);
   };
 
-  const getActivityIcon = (action: string, entityType: string) => {
+  const getActivityIcon = (action: string) => {
     if (action === 'created') return <PlusIcon className="w-4 h-4" />;
     if (action === 'updated' || action === 'moved') return <EditIcon className="w-4 h-4" />;
     if (action === 'deleted') return <TrashIcon className="w-4 h-4" />;
@@ -181,7 +185,7 @@ export function ActivityFeed({ boardId, limit = 20 }: ActivityFeedProps) {
               className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${getActivityColor(activity.action)}`}>
-                {getActivityIcon(activity.action, activity.entity_type)}
+                {getActivityIcon(activity.action)}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-900 dark:text-gray-100">

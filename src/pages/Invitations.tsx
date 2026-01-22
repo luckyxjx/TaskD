@@ -62,14 +62,18 @@ export function Invitations({ onBack, onBoardClick }: InvitationsProps) {
           .eq('id', inv.board_id)
           .single();
 
-        const { data: userData } = await supabase.rpc('get_user_email', {
+        const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
           user_uuid: inv.invited_by
         });
+
+        if (emailError) {
+          console.error('Error fetching user email:', emailError);
+        }
 
         return {
           ...inv,
           board_name: boardData?.name || 'Unknown Board',
-          invited_by_email: userData || 'Unknown User'
+          invited_by_email: emailData || 'Unknown User'
         };
       })
     );
