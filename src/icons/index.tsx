@@ -1,0 +1,17 @@
+export { MailIcon } from './Mail';
+export { LockIcon } from './Lock';
+export { UserIcon } from './User';
+export { PlusIcon } from './Plus';
+export { TrashIcon } from './Trash';
+export { EditIcon } from './Edit';
+export { XIcon } from './X';
+export { CheckIcon } from './Check';
+export { SunIcon } from './Sun';
+export { MoonIcon } from './Moon';
+export { MonitorIcon } from './Monitor';
+export { LogOutIcon } from './LogOut';
+export { LayoutGridIcon } from './LayoutGrid';
+export { GithubIcon } from './Github';
+export { LoaderIcon } from './Loader';
+export { MoreVerticalIcon } from './MoreVertical';
+export { SettingsIcon } from './Settings';

@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# Development
+.vscode
+.idea
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts (will be rebuilt by Vercel)
+dist
+dist-ssr
+
+# Supabase local
+.supabase
