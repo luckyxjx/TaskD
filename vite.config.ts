@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Modern Kanban Board',
-        short_name: 'Kanban',
-        description: 'A modern, beautiful kanban board application for task management',
+        name: 'TaskD - Modern Task Management',
+        short_name: 'TaskD',
+        description: 'TaskD - A modern, beautiful kanban board application for task management',
         theme_color: '#4f678e',
         background_color: '#ffffff',
         display: 'standalone',

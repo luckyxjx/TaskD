@@ -53,7 +53,7 @@ export function Login({ onSwitchToSignUp }: LoginProps) {
       <div className="relative bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700 p-8 max-w-xl w-full animate-scale-in z-10">
         <div className="flex flex-col items-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome Back
+            Welcome to TaskD
           </h1>
           <p className="text-gray-600 dark:text-gray-400">Sign in to continue your productivity journey</p>
         </div>

@@ -1,140 +1,181 @@
-# Modern Kanban Web App
+# TaskD - Modern Task Management
 
 A modern, responsive Kanban board application built with React, TypeScript, Vite, and Supabase.
 
-## Features
+## ✨ Features
 
-- 🔐 User authentication (sign up, login, profile management)
-- 📋 Create and manage workspaces
-- 🎯 Multiple boards per workspace
-- 📝 Drag-and-drop cards between lists
-- 🎨 Clean, modern UI with Tailwind CSS
-- ⚡ Fast performance with Vite
-- 🔒 Secure backend with Supabase
+- 🔐 **Authentication** - Email, Google, and GitHub OAuth
+- 📋 **Workspaces** - Organize projects into separate workspaces
+- 🎯 **Kanban Boards** - Multiple boards per workspace
+- 📝 **Drag & Drop** - Intuitive card management
+- 🎨 **Priority Levels** - Color-coded task priorities (Low, Medium, High, Urgent)
+- 📊 **Real-time Progress** - Live task completion tracking
+- 🌓 **Dark Mode** - Auto-detect system preference
+- ⚡ **PWA Ready** - Install as a native app
+- 🔒 **Secure** - Row-level security with Supabase
+- 📱 **Responsive** - Works on all devices
 
-## Tech Stack
+## 🚀 Tech Stack
 
 - **Frontend**: React 18, TypeScript, Vite
-- **Styling**: Tailwind CSS
-- **Backend**: Supabase (PostgreSQL, Authentication, Real-time)
-- **Icons**: Lucide React
-- **Deployment**: Vercel
+- **Styling**: Tailwind CSS with custom pastel palette
+- **Backend**: Supabase (PostgreSQL, Auth, Real-time)
+- **Icons**: Custom SVG icons
+- **PWA**: vite-plugin-pwa
+- **Deployment**: Vercel-ready
 
-## Getting Started
+## 📦 Quick Start
 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- A Supabase account and project
+- A Supabase account ([sign up free](https://supabase.com))
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone and install**
 ```bash
 git clone <your-repo-url>
-cd <your-project-name>
-```
-
-2. Install dependencies:
-```bash
+cd taskd
 npm install
 ```
 
-3. Set up environment variables:
+2. **Set up environment variables**
 ```bash
 cp .env.example .env
 ```
 
-4. Edit `.env` and add your Supabase credentials:
+Edit `.env` with your Supabase credentials:
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-5. Apply database migrations:
-   - Go to your Supabase project dashboard
+3. **Set up database**
+   - Go to [Supabase Dashboard](https://app.supabase.com)
    - Navigate to SQL Editor
-   - Run the SQL from `supabase/migrations/20260122110416_create_kanban_schema.sql`
+   - Run migrations from `supabase/migrations/`
 
-6. Start the development server:
+4. **Start development**
 ```bash
 npm run dev
 ```
 
-7. Open [http://localhost:5173](http://localhost:5173) in your browser
+Open [http://localhost:5173](http://localhost:5173)
 
-## Available Scripts
+## 📜 Available Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build locally
-- `npm run lint` - Run ESLint
-- `npm run typecheck` - Run TypeScript type checking
+```bash
+npm run dev        # Start development server
+npm run build      # Build for production
+npm run preview    # Preview production build
+npm run lint       # Run ESLint
+npm run typecheck  # TypeScript type checking
+```
 
-## Deployment
+## 🚀 Deployment
 
-This project is ready to deploy to Vercel. See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions.
+TaskD is ready to deploy to Vercel in minutes!
 
-### Quick Deploy to Vercel
+### Quick Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=<your-repo-url>)
+```bash
+npm i -g vercel
+vercel
+```
 
-1. Click the button above or go to [vercel.com](https://vercel.com)
-2. Import your repository
-3. Add environment variables:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. Deploy!
+See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed instructions.
 
-## Project Structure
+### Environment Variables (Vercel)
+
+Add these in your Vercel project settings:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+## 📱 PWA Setup
+
+TaskD is configured as a Progressive Web App. To complete setup:
+
+1. Generate icons at [PWA Builder](https://www.pwabuilder.com/imageGenerator)
+2. Add to `public/` folder:
+   - `pwa-192x192.png`
+   - `pwa-512x512.png`
+   - `apple-touch-icon.png`
+
+See [PWA_SETUP.md](./PWA_SETUP.md) for details.
+
+## 📁 Project Structure
 
 ```
+taskd/
 ├── src/
-│   ├── contexts/          # React contexts (Auth)
-│   ├── lib/              # Utilities and Supabase client
-│   ├── pages/            # Page components
-│   ├── App.tsx           # Main app component
-│   └── main.tsx          # Entry point
+│   ├── components/       # Reusable UI components
+│   ├── contexts/         # React contexts (Auth, Theme)
+│   ├── icons/           # Custom SVG icons
+│   ├── lib/             # Supabase client
+│   ├── pages/           # Page components
+│   └── main.tsx         # Entry point
 ├── supabase/
-│   └── migrations/       # Database migrations
-├── .env.example          # Environment variables template
-├── vercel.json           # Vercel configuration
-└── DEPLOYMENT.md         # Detailed deployment guide
+│   └── migrations/      # Database schema
+├── public/              # Static assets
+└── docs/               # Documentation
 ```
 
-## Environment Variables
+## 🗄️ Database Schema
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `VITE_SUPABASE_URL` | Your Supabase project URL | Yes |
-| `VITE_SUPABASE_ANON_KEY` | Your Supabase anonymous key | Yes |
+- **workspaces** - User workspaces
+- **boards** - Kanban boards with progress tracking
+- **lists** - Columns (To Do, In Progress, Done)
+- **cards** - Tasks with priority levels
 
-## Database Schema
+## 🎨 Features in Detail
 
-The app uses the following tables:
-- `workspaces` - User workspaces
-- `boards` - Kanban boards within workspaces
-- `lists` - Columns within boards
-- `cards` - Tasks within lists
+### Priority Levels
+- 🟢 Low - Green
+- 🔵 Medium - Blue  
+- 🟡 High - Yellow/Orange
+- 🔴 Urgent - Red
 
-See `supabase/migrations/` for the complete schema.
+### Board Management
+- Create/rename/delete boards
+- Auto-created default lists
+- Real-time progress tracking
+- Task completion percentage
 
-## Contributing
+### Authentication
+- Email/password
+- Google OAuth
+- GitHub OAuth
+- Secure session management
+
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open Pull Request
 
-## License
+## 📄 License
 
-This project is open source and available under the [MIT License](LICENSE).
+MIT License - feel free to use for personal or commercial projects.
 
-## Support
+## 🆘 Support
 
-For issues and questions:
-- Check [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment help
-- Open an issue on GitHub
-- Check [Supabase docs](https://supabase.com/docs)
-- Check [Vite docs](https://vitejs.dev)
+- 📖 [Deployment Guide](./DEPLOYMENT_GUIDE.md)
+- 📱 [PWA Setup](./PWA_SETUP.md)
+- 🚀 [Quick Deploy](./READY_TO_DEPLOY.md)
+- 🐛 [Open an Issue](https://github.com/yourusername/taskd/issues)
+
+## 🙏 Acknowledgments
+
+Built with:
+- [React](https://react.dev)
+- [Vite](https://vitejs.dev)
+- [Supabase](https://supabase.com)
+- [Tailwind CSS](https://tailwindcss.com)
+- [Vercel](https://vercel.com)
+
+---
+
+Made with ❤️ by [Your Name]
