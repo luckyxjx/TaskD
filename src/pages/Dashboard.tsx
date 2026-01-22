@@ -173,18 +173,6 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
   const createWorkspace = async () => {
     if (!user || !newWorkspaceName.trim()) return;
 
-    // Check for duplicate workspace name
-    const { data: existing, error: checkError } = await supabase
-      .from('workspaces')
-      .select('id')
-      .eq('owner_id', user.id)
-      .ilike('name', newWorkspaceName.trim());
-
-    if (!checkError && existing && existing.length > 0) {
-      alert('A workspace with this name already exists!');
-      return;
-    }
-
     const { data, error } = await supabase
       .from('workspaces')
       .insert([{ name: newWorkspaceName, owner_id: user.id }])
@@ -192,7 +180,12 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
       .single();
 
     if (error) {
-      console.error('Error creating workspace:', error);
+      if (error.code === '23505') {
+        alert('A workspace with this name already exists!');
+      } else {
+        console.error('Error creating workspace:', error);
+        alert('Failed to create workspace. Please try again.');
+      }
       return;
     }
 
@@ -207,18 +200,6 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
   const createBoard = async () => {
     if (!selectedWorkspace || !newBoardName.trim()) return;
 
-    // Check for duplicate board name in this workspace
-    const { data: existing, error: checkError } = await supabase
-      .from('boards')
-      .select('id')
-      .eq('workspace_id', selectedWorkspace)
-      .ilike('name', newBoardName.trim());
-
-    if (!checkError && existing && existing.length > 0) {
-      alert('A board with this name already exists in this workspace!');
-      return;
-    }
-
     const { data, error } = await supabase
       .from('boards')
       .insert([{ name: newBoardName, workspace_id: selectedWorkspace }])
@@ -226,7 +207,12 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
       .single();
 
     if (error) {
-      console.error('Error creating board:', error);
+      if (error.code === '23505') {
+        alert('A board with this name already exists in this workspace!');
+      } else {
+        console.error('Error creating board:', error);
+        alert('Failed to create board. Please try again.');
+      }
       return;
     }
 
