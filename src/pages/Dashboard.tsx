@@ -137,7 +137,10 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
         .select('id, name')
         .eq('board_id', board.id);
 
-      if (!lists) continue;
+      if (!lists || lists.length === 0) {
+        stats[board.id] = { total: 0, completed: 0 };
+        continue;
+      }
 
       // Find the "Done" list
       const doneList = lists.find(list => list.name.toLowerCase() === 'done');
@@ -149,14 +152,18 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
         .in('list_id', lists.map(l => l.id));
 
       // Get completed cards count (cards in "Done" list)
-      const { count: completedCount } = await supabase
-        .from('cards')
-        .select('*', { count: 'exact', head: true })
-        .eq('list_id', doneList?.id || '');
+      let completedCount = 0;
+      if (doneList) {
+        const { count } = await supabase
+          .from('cards')
+          .select('*', { count: 'exact', head: true })
+          .eq('list_id', doneList.id);
+        completedCount = count || 0;
+      }
 
       stats[board.id] = {
         total: totalCount || 0,
-        completed: completedCount || 0,
+        completed: completedCount,
       };
     }
 
@@ -200,7 +207,7 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
     }
 
     if (data) {
-      // Add current user as board owner (manually, since we removed the trigger)
+      // Add current user as board owner
       const { error: ownerError } = await supabase.rpc('add_user_as_board_owner', {
         board_uuid: data.id
       });

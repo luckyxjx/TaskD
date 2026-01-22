@@ -74,12 +74,18 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
 
     setLists(listsData || []);
 
+    // Guard: Only query cards if we have lists
+    if (!listsData || listsData.length === 0) {
+      setCards([]);
+      return;
+    }
+
     const { data: cardsData } = await supabase
       .from('cards')
       .select('*')
       .in(
         'list_id',
-        (listsData || []).map((l) => l.id)
+        listsData.map((l) => l.id)
       )
       .order('position');
 

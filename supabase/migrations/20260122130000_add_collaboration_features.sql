@@ -1,9 +1,10 @@
--- Phase 1: Collaboration Features Migration
--- This adds board sharing, invitations, activity log, and comments
--- NO TRIGGER - board owners are added manually in application code
+-- Phase 1: Collaboration Features Migration (CORRECT ARCHITECTURE)
+-- Rule #1: Boards do NOT know about members (workspace ownership only)
+-- Rule #2: Lists, cards, comments, activities DO know about members
+-- Rule #3: No circular RLS dependencies
 
 -- ============================================
--- 1. BOARD MEMBERS (Multi-user collaboration)
+-- 1. BOARD MEMBERS (Collaboration Overlay)
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS board_members (
@@ -98,18 +99,24 @@ CREATE TRIGGER trigger_update_comment_timestamp
 -- 5. HELPER FUNCTION FOR APPLICATION
 -- ============================================
 
--- Function to add board owner after board creation (called from app)
-CREATE OR REPLACE FUNCTION add_user_as_board_owner(board_uuid UUID)
-RETURNS void AS $$
+-- Function to add board owner (called from app after creating board)
+CREATE OR REPLACE FUNCTION public.add_user_as_board_owner(
+  board_uuid UUID
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   INSERT INTO board_members (board_id, user_id, role, accepted_at)
   VALUES (board_uuid, auth.uid(), 'owner', NOW())
   ON CONFLICT (board_id, user_id) DO NOTHING;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ============================================
--- 6. ROW LEVEL SECURITY (RLS) POLICIES
+-- 6. ROW LEVEL SECURITY POLICIES
 -- ============================================
 
 -- Enable RLS
@@ -118,21 +125,27 @@ ALTER TABLE board_invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE card_comments ENABLE ROW LEVEL SECURITY;
 
--- Board Members Policies (NO RECURSION - check workspace ownership directly)
+-- ============================================
+-- BOARD MEMBERS POLICIES (Simple - No Recursion)
+-- ============================================
+
 DROP POLICY IF EXISTS "Users can view board members" ON board_members;
 CREATE POLICY "Users can view board members"
   ON board_members FOR SELECT
   USING (
+    -- Can see own membership
     user_id = auth.uid()
     OR
+    -- Workspace owners can see all members of their boards
     board_id IN (
       SELECT b.id FROM boards b
       JOIN workspaces w ON b.workspace_id = w.id
       WHERE w.owner_id = auth.uid()
     )
     OR
+    -- Board members can see other members
     board_id IN (
-      SELECT bm.board_id FROM board_members bm WHERE bm.user_id = auth.uid()
+      SELECT board_id FROM board_members WHERE user_id = auth.uid()
     )
   );
 
@@ -147,7 +160,10 @@ CREATE POLICY "Workspace owners can manage members"
     )
   );
 
--- Board Invitations Policies
+-- ============================================
+-- BOARD INVITATIONS POLICIES
+-- ============================================
+
 DROP POLICY IF EXISTS "Users can view invitations they sent" ON board_invitations;
 CREATE POLICY "Users can view invitations they sent"
   ON board_invitations FOR SELECT
@@ -178,24 +194,29 @@ CREATE POLICY "Users can update their own invitations"
     email = (SELECT email FROM auth.users WHERE id = auth.uid())
   );
 
--- Activities Policies
-DROP POLICY IF EXISTS "Users can view activities of their boards" ON activities;
-CREATE POLICY "Users can view activities of their boards"
+-- ============================================
+-- ACTIVITIES POLICIES
+-- ============================================
+
+DROP POLICY IF EXISTS "Users can view activities" ON activities;
+CREATE POLICY "Users can view activities"
   ON activities FOR SELECT
   USING (
+    -- Workspace owners see all
     board_id IN (
       SELECT b.id FROM boards b
       JOIN workspaces w ON b.workspace_id = w.id
       WHERE w.owner_id = auth.uid()
     )
     OR
+    -- Board members see activities
     board_id IN (
       SELECT board_id FROM board_members WHERE user_id = auth.uid()
     )
   );
 
-DROP POLICY IF EXISTS "Users can create activities on their boards" ON activities;
-CREATE POLICY "Users can create activities on their boards"
+DROP POLICY IF EXISTS "Users can create activities" ON activities;
+CREATE POLICY "Users can create activities"
   ON activities FOR INSERT
   WITH CHECK (
     board_id IN (
@@ -209,9 +230,12 @@ CREATE POLICY "Users can create activities on their boards"
     )
   );
 
--- Comments Policies
-DROP POLICY IF EXISTS "Users can view comments on accessible cards" ON card_comments;
-CREATE POLICY "Users can view comments on accessible cards"
+-- ============================================
+-- COMMENTS POLICIES
+-- ============================================
+
+DROP POLICY IF EXISTS "Users can view comments" ON card_comments;
+CREATE POLICY "Users can view comments"
   ON card_comments FOR SELECT
   USING (
     card_id IN (
@@ -230,8 +254,8 @@ CREATE POLICY "Users can view comments on accessible cards"
     )
   );
 
-DROP POLICY IF EXISTS "Users can create comments on accessible cards" ON card_comments;
-CREATE POLICY "Users can create comments on accessible cards"
+DROP POLICY IF EXISTS "Users can create comments" ON card_comments;
+CREATE POLICY "Users can create comments"
   ON card_comments FOR INSERT
   WITH CHECK (
     card_id IN (
@@ -261,49 +285,17 @@ CREATE POLICY "Users can delete their own comments"
   USING (user_id = auth.uid());
 
 -- ============================================
--- 7. UPDATE EXISTING BOARDS RLS (NO RECURSION)
+-- 7. BOARDS RLS (Ownership Only - No Members)
 -- ============================================
 
+-- Boards NEVER check board_members table (Rule #1)
 DROP POLICY IF EXISTS "Users can view their own boards" ON boards;
 DROP POLICY IF EXISTS "Users can create boards" ON boards;
 DROP POLICY IF EXISTS "Users can update their own boards" ON boards;
 DROP POLICY IF EXISTS "Users can delete their own boards" ON boards;
-DROP POLICY IF EXISTS "Users can view boards they are members of" ON boards;
-DROP POLICY IF EXISTS "Board owners can update boards" ON boards;
-DROP POLICY IF EXISTS "Board owners can delete boards" ON boards;
-DROP POLICY IF EXISTS "Workspace owners can update boards" ON boards;
-DROP POLICY IF EXISTS "Workspace owners can delete boards" ON boards;
 
-CREATE POLICY "Users can view boards"
-  ON boards FOR SELECT
-  USING (
-    workspace_id IN (
-      SELECT id FROM workspaces WHERE owner_id = auth.uid()
-    )
-    OR
-    id IN (
-      SELECT board_id FROM board_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Users can create boards"
-  ON boards FOR INSERT
-  WITH CHECK (
-    workspace_id IN (
-      SELECT id FROM workspaces WHERE owner_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Workspace owners can update boards"
-  ON boards FOR UPDATE
-  USING (
-    workspace_id IN (
-      SELECT id FROM workspaces WHERE owner_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Workspace owners can delete boards"
-  ON boards FOR DELETE
+CREATE POLICY "Workspace owners manage boards"
+  ON boards FOR ALL
   USING (
     workspace_id IN (
       SELECT id FROM workspaces WHERE owner_id = auth.uid()
@@ -311,27 +303,25 @@ CREATE POLICY "Workspace owners can delete boards"
   );
 
 -- ============================================
--- 8. UPDATE LISTS RLS (NO RECURSION)
+-- 8. LISTS RLS (Shared Access - Rule #2)
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view lists in their boards" ON lists;
 DROP POLICY IF EXISTS "Users can create lists in their boards" ON lists;
 DROP POLICY IF EXISTS "Users can update lists in their boards" ON lists;
 DROP POLICY IF EXISTS "Users can delete lists in their boards" ON lists;
-DROP POLICY IF EXISTS "Users can view lists in accessible boards" ON lists;
-DROP POLICY IF EXISTS "Editors can create lists" ON lists;
-DROP POLICY IF EXISTS "Editors can update lists" ON lists;
-DROP POLICY IF EXISTS "Editors can delete lists" ON lists;
 
 CREATE POLICY "Users can view lists"
   ON lists FOR SELECT
   USING (
+    -- Workspace owner sees everything
     board_id IN (
       SELECT b.id FROM boards b
       JOIN workspaces w ON b.workspace_id = w.id
       WHERE w.owner_id = auth.uid()
     )
     OR
+    -- Collaborators see shared boards
     board_id IN (
       SELECT board_id FROM board_members WHERE user_id = auth.uid()
     )
@@ -353,17 +343,13 @@ CREATE POLICY "Users can manage lists"
   );
 
 -- ============================================
--- 9. UPDATE CARDS RLS (NO RECURSION)
+-- 9. CARDS RLS (Editor vs Viewer - Rule #2)
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view cards in their boards" ON cards;
 DROP POLICY IF EXISTS "Users can create cards in their boards" ON cards;
 DROP POLICY IF EXISTS "Users can update cards in their boards" ON cards;
 DROP POLICY IF EXISTS "Users can delete cards in their boards" ON cards;
-DROP POLICY IF EXISTS "Users can view cards in accessible boards" ON cards;
-DROP POLICY IF EXISTS "Editors can create cards" ON cards;
-DROP POLICY IF EXISTS "Editors can update cards" ON cards;
-DROP POLICY IF EXISTS "Editors can delete cards" ON cards;
 
 CREATE POLICY "Users can view cards"
   ON cards FOR SELECT
@@ -395,10 +381,8 @@ CREATE POLICY "Users can manage cards"
     OR
     list_id IN (
       SELECT l.id FROM lists l
-      WHERE l.board_id IN (
-        SELECT board_id FROM board_members
-        WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
-      )
+      JOIN board_members bm ON l.board_id = bm.board_id
+      WHERE bm.user_id = auth.uid() AND bm.role IN ('owner', 'editor')
     )
   );
 
@@ -406,13 +390,11 @@ CREATE POLICY "Users can manage cards"
 -- 10. HELPER FUNCTIONS
 -- ============================================
 
--- Function to get user email by ID
 CREATE OR REPLACE FUNCTION get_user_email(user_uuid UUID)
 RETURNS TEXT AS $$
   SELECT email FROM auth.users WHERE id = user_uuid;
 $$ LANGUAGE SQL SECURITY DEFINER;
 
--- Function to accept invitation
 CREATE OR REPLACE FUNCTION accept_board_invitation(invitation_token TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -452,11 +434,13 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================
--- DONE! 🎉
+-- DONE! ✅ No Recursion, Fully Collaborative
 -- ============================================
 
-COMMENT ON TABLE board_members IS 'Stores board membership and roles for collaboration';
-COMMENT ON TABLE board_invitations IS 'Stores pending board invitations';
-COMMENT ON TABLE activities IS 'Stores activity log for boards';
-COMMENT ON TABLE card_comments IS 'Stores comments on cards with mentions support';
-COMMENT ON FUNCTION add_user_as_board_owner IS 'Manually add user as board owner - call from application after creating board';
+COMMENT ON TABLE board_members IS 'Collaboration overlay - defines who can interact with boards';
+COMMENT ON TABLE board_invitations IS 'Pending board invitations';
+COMMENT ON TABLE activities IS 'Activity log for boards';
+COMMENT ON TABLE card_comments IS 'Comments on cards with mentions';
+COMMENT ON POLICY "Workspace owners manage boards" ON boards IS 'Rule #1: Boards do NOT know about members';
+COMMENT ON POLICY "Users can view lists" ON lists IS 'Rule #2: Lists DO know about members';
+COMMENT ON POLICY "Users can manage cards" ON cards IS 'Rule #2: Cards DO know about members';
