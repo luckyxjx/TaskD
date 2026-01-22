@@ -173,6 +173,19 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
   const createWorkspace = async () => {
     if (!user || !newWorkspaceName.trim()) return;
 
+    // Check for duplicate workspace name
+    const { data: existing } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_id', user.id)
+      .ilike('name', newWorkspaceName.trim())
+      .single();
+
+    if (existing) {
+      alert('A workspace with this name already exists!');
+      return;
+    }
+
     const { data, error } = await supabase
       .from('workspaces')
       .insert([{ name: newWorkspaceName, owner_id: user.id }])
@@ -194,6 +207,19 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
 
   const createBoard = async () => {
     if (!selectedWorkspace || !newBoardName.trim()) return;
+
+    // Check for duplicate board name in this workspace
+    const { data: existing } = await supabase
+      .from('boards')
+      .select('id')
+      .eq('workspace_id', selectedWorkspace)
+      .ilike('name', newBoardName.trim())
+      .single();
+
+    if (existing) {
+      alert('A board with this name already exists in this workspace!');
+      return;
+    }
 
     const { data, error } = await supabase
       .from('boards')

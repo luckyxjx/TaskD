@@ -34,6 +34,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [cards, setCards] = useState<Card[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedCard, setDraggedCard] = useState<Card | null>(null);
+  const [draggedList, setDraggedList] = useState<List | null>(null);
   const [showNewListModal, setShowNewListModal] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
   const [showNewCardModal, setShowNewCardModal] = useState(false);
@@ -44,12 +45,14 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [newListName, setNewListName] = useState('');
   const [newCardTitle, setNewCardTitle] = useState('');
+  const [newCardDescription, setNewCardDescription] = useState('');
   const [newCardPriority, setNewCardPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [cardModalTitle, setCardModalTitle] = useState('');
   const [cardModalDescription, setCardModalDescription] = useState('');
   const [cardModalPriority, setCardModalPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [renameBoardName, setRenameBoardName] = useState('');
   const [showBoardMenu, setShowBoardMenu] = useState(false);
+  const [showListMenu, setShowListMenu] = useState<string | null>(null);
 
   useEffect(() => {
     loadBoardData();
@@ -158,6 +161,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       .from('cards')
       .insert([{
         title: newCardTitle,
+        description: newCardDescription || null,
         list_id: selectedListId,
         position: maxPosition + 1,
         priority: newCardPriority,
@@ -173,6 +177,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     if (data) {
       setCards([...cards, data]);
       setNewCardTitle('');
+      setNewCardDescription('');
       setNewCardPriority('medium');
       setShowNewCardModal(false);
       setSelectedListId(null);
@@ -256,6 +261,66 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       )
     );
     setDraggedCard(null);
+  };
+
+  const handleListDragStart = (list: List) => {
+    setDraggedList(list);
+  };
+
+  const handleListDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleListDrop = async (targetList: List) => {
+    if (!draggedList || draggedList.id === targetList.id) {
+      setDraggedList(null);
+      return;
+    }
+
+    const sourcePosition = draggedList.position;
+    const targetPosition = targetList.position;
+
+    // Update positions
+    const updatedLists = lists.map((list) => {
+      if (list.id === draggedList.id) {
+        return { ...list, position: targetPosition };
+      }
+      if (sourcePosition < targetPosition) {
+        if (list.position > sourcePosition && list.position <= targetPosition) {
+          return { ...list, position: list.position - 1 };
+        }
+      } else {
+        if (list.position >= targetPosition && list.position < sourcePosition) {
+          return { ...list, position: list.position + 1 };
+        }
+      }
+      return list;
+    });
+
+    setLists(updatedLists.sort((a, b) => a.position - b.position));
+
+    // Update in database
+    for (const list of updatedLists) {
+      await supabase
+        .from('lists')
+        .update({ position: list.position })
+        .eq('id', list.id);
+    }
+
+    setDraggedList(null);
+  };
+
+  const deleteList = async (listId: string) => {
+    const { error } = await supabase.from('lists').delete().eq('id', listId);
+
+    if (error) {
+      console.error('Error deleting list:', error);
+      return;
+    }
+
+    setLists(lists.filter((l) => l.id !== listId));
+    setCards(cards.filter((c) => c.list_id !== listId));
+    setShowListMenu(null);
   };
 
   const openCardModal = (card: Card) => {
@@ -383,18 +448,44 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           {lists.map((list, index) => (
             <div
               key={list.id}
-              className="glass rounded-2xl p-4 w-80 flex flex-col flex-shrink-0 animate-fade-in-up bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
+              draggable
+              onDragStart={() => handleListDragStart(list)}
+              onDragOver={handleListDragOver}
+              onDrop={() => handleListDrop(list)}
+              className="glass rounded-2xl p-4 w-80 flex flex-col flex-shrink-0 animate-fade-in-up bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 cursor-move"
               style={{ animationDelay: `${index * 50}ms` }}
-              onDragOver={handleDragOver}
-              onDrop={() => handleDrop(list.id)}
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">{list.name}</h3>
-                <button className="p-2 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all">
-                  <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowListMenu(showListMenu === list.id ? null : list.id)}
+                    className="p-2 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all"
+                  >
+                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  </button>
+                  {showListMenu === list.id && (
+                    <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete list "${list.name}" and all its cards?`)) {
+                            deleteList(list.id);
+                          }
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete List
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-1">
+              <div 
+                className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-1"
+                onDragOver={handleDragOver}
+                onDrop={() => handleDrop(list.id)}
+              >
                 {getListCards(list.id).map((card, cardIndex) => (
                   <div
                     key={card.id}
@@ -479,9 +570,10 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         onClose={() => {
           setShowNewCardModal(false);
           setSelectedListId(null);
+          setNewCardDescription('');
         }}
         title="Create Card"
-        size="sm"
+        size="md"
       >
         <div className="space-y-4">
           <Input
@@ -489,9 +581,20 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             value={newCardTitle}
             onChange={(e) => setNewCardTitle(e.target.value)}
             placeholder="What needs to be done?"
-            onKeyDown={(e) => e.key === 'Enter' && createCard()}
             autoFocus
           />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Description (Optional)
+            </label>
+            <textarea
+              value={newCardDescription}
+              onChange={(e) => setNewCardDescription(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 resize-none placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100"
+              placeholder="Add more details..."
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Priority
@@ -518,6 +621,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
               onClick={() => {
                 setShowNewCardModal(false);
                 setSelectedListId(null);
+                setNewCardDescription('');
               }}
               variant="secondary"
             >
