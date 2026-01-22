@@ -44,13 +44,20 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
   const [showRenameBoardModal, setShowRenameBoardModal] = useState(false);
+  const [showDeleteWorkspaceModal, setShowDeleteWorkspaceModal] = useState(false);
+  const [showRenameWorkspaceModal, setShowRenameWorkspaceModal] = useState(false);
   const [boardToDelete, setBoardToDelete] = useState<Board | null>(null);
   const [boardToRename, setBoardToRename] = useState<Board | null>(null);
+  const [workspaceToDelete, setWorkspaceToDelete] = useState<Workspace | null>(null);
+  const [workspaceToRename, setWorkspaceToRename] = useState<Workspace | null>(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newBoardName, setNewBoardName] = useState('');
   const [renameBoardName, setRenameBoardName] = useState('');
+  const [renameWorkspaceName, setRenameWorkspaceName] = useState('');
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const workspaceDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadWorkspaces();
@@ -86,6 +93,9 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpenDropdownId(null);
       }
+      if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(event.target as Node)) {
+        setShowWorkspaceMenu(null);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -114,18 +124,56 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
   };
 
   const loadBoards = async (workspaceId: string) => {
-    const { data, error } = await supabase
+    // Load boards owned by the workspace
+    const { data: ownedBoards, error: ownedError } = await supabase
       .from('boards')
       .select('*')
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error loading boards:', error);
+    if (ownedError) {
+      console.error('Error loading owned boards:', ownedError);
       return;
     }
 
-    setBoards(data || []);
+    // Load boards shared with the user (where they are a member)
+    const { data: memberData, error: sharedError } = await supabase
+      .from('board_members')
+      .select('board_id')
+      .eq('user_id', user?.id);
+
+    if (sharedError) {
+      console.error('Error loading shared boards:', sharedError);
+    }
+
+    // Get the board IDs that are shared with the user
+    const sharedBoardIds = (memberData || []).map(m => m.board_id);
+
+    // Fetch the actual board data for shared boards (excluding current workspace)
+    let sharedBoards: Board[] = [];
+    if (sharedBoardIds.length > 0) {
+      const { data: sharedBoardsData, error: sharedBoardsError } = await supabase
+        .from('boards')
+        .select('*')
+        .in('id', sharedBoardIds)
+        .neq('workspace_id', workspaceId);
+
+      if (sharedBoardsError) {
+        console.error('Error loading shared board details:', sharedBoardsError);
+      } else {
+        sharedBoards = sharedBoardsData || [];
+      }
+    }
+
+    // Combine owned and shared boards
+    const allBoards = [...(ownedBoards || []), ...sharedBoards];
+    
+    // Remove duplicates by board id
+    const uniqueBoards = Array.from(
+      new Map(allBoards.map(board => [board.id, board])).values()
+    );
+
+    setBoards(uniqueBoards);
   };
 
   const loadBoardStats = async () => {
@@ -300,6 +348,73 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
     setBoardToDelete(null);
   };
 
+  const handleRenameWorkspace = (workspace: Workspace, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setWorkspaceToRename(workspace);
+    setRenameWorkspaceName(workspace.name);
+    setShowRenameWorkspaceModal(true);
+    setShowWorkspaceMenu(null);
+  };
+
+  const renameWorkspace = async () => {
+    if (!workspaceToRename || !renameWorkspaceName.trim()) return;
+
+    const { error } = await supabase
+      .from('workspaces')
+      .update({ name: renameWorkspaceName })
+      .eq('id', workspaceToRename.id);
+
+    if (error) {
+      console.error('Error renaming workspace:', error);
+      return;
+    }
+
+    setWorkspaces(workspaces.map(w => w.id === workspaceToRename.id ? { ...w, name: renameWorkspaceName } : w));
+    setShowRenameWorkspaceModal(false);
+    setWorkspaceToRename(null);
+    setRenameWorkspaceName('');
+  };
+
+  const handleDeleteWorkspace = (workspace: Workspace, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setWorkspaceToDelete(workspace);
+    setShowDeleteWorkspaceModal(true);
+    setShowWorkspaceMenu(null);
+  };
+
+  const deleteWorkspace = async () => {
+    if (!workspaceToDelete) return;
+
+    const { error } = await supabase
+      .from('workspaces')
+      .delete()
+      .eq('id', workspaceToDelete.id);
+
+    if (error) {
+      console.error('Error deleting workspace:', error);
+      return;
+    }
+
+    const remainingWorkspaces = workspaces.filter(w => w.id !== workspaceToDelete.id);
+    setWorkspaces(remainingWorkspaces);
+    
+    // Select first remaining workspace or show create modal
+    if (remainingWorkspaces.length > 0) {
+      setSelectedWorkspace(remainingWorkspaces[0].id);
+    } else {
+      setSelectedWorkspace(null);
+      setShowNewWorkspaceModal(true);
+    }
+    
+    setShowDeleteWorkspaceModal(false);
+    setWorkspaceToDelete(null);
+  };
+
+  const toggleWorkspaceMenu = (workspaceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowWorkspaceMenu(showWorkspaceMenu === workspaceId ? null : workspaceId);
+  };
+
   const toggleDropdown = (boardId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setOpenDropdownId(openDropdownId === boardId ? null : boardId);
@@ -345,17 +460,45 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
             {!sidebarCollapsed && (
               <div className="space-y-2">
                 {workspaces.map((workspace) => (
-                  <button
-                    key={workspace.id}
-                    onClick={() => setSelectedWorkspace(workspace.id)}
-                    className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 ${
-                      selectedWorkspace === workspace.id
-                        ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 shadow-sm'
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    <span className="font-medium">{workspace.name}</span>
-                  </button>
+                  <div key={workspace.id} className="relative">
+                    <button
+                      onClick={() => setSelectedWorkspace(workspace.id)}
+                      className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center justify-between group ${
+                        selectedWorkspace === workspace.id
+                          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 shadow-sm'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <span className="font-medium">{workspace.name}</span>
+                      <button
+                        onClick={(e) => toggleWorkspaceMenu(workspace.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/50 dark:hover:bg-gray-700 transition-all"
+                      >
+                        <MoreVerticalIcon className="w-4 h-4" />
+                      </button>
+                    </button>
+                    {showWorkspaceMenu === workspace.id && (
+                      <div 
+                        ref={workspaceDropdownRef}
+                        className="absolute right-2 top-12 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10"
+                      >
+                        <button
+                          onClick={(e) => handleRenameWorkspace(workspace, e)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                        >
+                          <EditIcon className="w-4 h-4" />
+                          Rename Workspace
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteWorkspace(workspace, e)}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                          Delete Workspace
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
                 <button
                   onClick={() => setShowNewWorkspaceModal(true)}
@@ -455,6 +598,7 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
                 {filteredBoards.map((board, index) => {
                   const stats = boardStats[board.id] || { total: 0, completed: 0 };
                   const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+                  const isSharedBoard = board.workspace_id !== selectedWorkspace;
                   
                   return (
                   <Card
@@ -464,6 +608,16 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
                     className="group relative"
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
+                    {isSharedBoard && (
+                      <div className="absolute top-3 left-3 z-10">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                          </svg>
+                          Shared
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
                         <LayoutGrid className="w-6 h-6 text-primary-600 dark:text-primary-400" />
@@ -646,6 +800,78 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
               className="bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
             >
               Delete Board
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Workspace Modals */}
+      <Modal
+        isOpen={showRenameWorkspaceModal}
+        onClose={() => {
+          setShowRenameWorkspaceModal(false);
+          setWorkspaceToRename(null);
+          setRenameWorkspaceName('');
+        }}
+        title="Rename Workspace"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Workspace Name"
+            value={renameWorkspaceName}
+            onChange={(e) => setRenameWorkspaceName(e.target.value)}
+            placeholder="New Workspace Name"
+            onKeyDown={(e) => e.key === 'Enter' && renameWorkspace()}
+            autoFocus
+          />
+          <div className="flex gap-3 justify-end">
+            <Button
+              onClick={() => {
+                setShowRenameWorkspaceModal(false);
+                setWorkspaceToRename(null);
+                setRenameWorkspaceName('');
+              }}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button onClick={renameWorkspace} variant="primary">
+              Rename Workspace
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showDeleteWorkspaceModal}
+        onClose={() => {
+          setShowDeleteWorkspaceModal(false);
+          setWorkspaceToDelete(null);
+        }}
+        title="Delete Workspace"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600 dark:text-gray-400">
+            Are you sure you want to delete <span className="font-semibold text-gray-900 dark:text-gray-100">"{workspaceToDelete?.name}"</span>? This action cannot be undone and will delete all boards, lists, and cards in this workspace.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button
+              onClick={() => {
+                setShowDeleteWorkspaceModal(false);
+                setWorkspaceToDelete(null);
+              }}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={deleteWorkspace} 
+              variant="primary"
+              className="bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
+            >
+              Delete Workspace
             </Button>
           </div>
         </div>
