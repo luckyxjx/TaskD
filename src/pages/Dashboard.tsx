@@ -200,6 +200,15 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
     }
 
     if (data) {
+      // Add current user as board owner (manually, since we removed the trigger)
+      const { error: ownerError } = await supabase.rpc('add_user_as_board_owner', {
+        board_uuid: data.id
+      });
+
+      if (ownerError) {
+        console.error('Error adding board owner:', ownerError);
+      }
+
       // Create default lists for the new board
       const defaultLists = [
         { name: 'To Do', board_id: data.id, position: 0 },

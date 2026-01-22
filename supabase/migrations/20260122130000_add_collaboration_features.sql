@@ -120,7 +120,22 @@ CREATE TRIGGER trigger_update_comment_timestamp
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- 5. ROW LEVEL SECURITY (RLS) POLICIES
+-- 5. HELPER FUNCTIONS FOR RLS
+-- ============================================
+
+-- Function to check if user is a member of a board (avoids recursion in policies)
+CREATE OR REPLACE FUNCTION is_board_member(board_uuid UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM board_members 
+    WHERE board_id = board_uuid AND user_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ============================================
+-- 6. ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================
 
 -- Enable RLS
@@ -132,18 +147,16 @@ ALTER TABLE card_comments ENABLE ROW LEVEL SECURITY;
 -- Board Members Policies
 CREATE POLICY "Users can view board members of their boards"
   ON board_members FOR SELECT
-  USING (
-    board_id IN (
-      SELECT board_id FROM board_members WHERE user_id = auth.uid()
-    )
-  );
+  USING (is_board_member(board_id) OR user_id = auth.uid());
 
 CREATE POLICY "Board owners can manage members"
   ON board_members FOR ALL
   USING (
-    board_id IN (
-      SELECT board_id FROM board_members 
-      WHERE user_id = auth.uid() AND role = 'owner'
+    is_board_member(board_id) AND EXISTS (
+      SELECT 1 FROM board_members 
+      WHERE board_id = board_members.board_id 
+        AND user_id = auth.uid() 
+        AND role = 'owner'
     )
   );
 
@@ -233,11 +246,7 @@ DROP POLICY IF EXISTS "Users can delete their own boards" ON boards;
 
 CREATE POLICY "Users can view boards they are members of"
   ON boards FOR SELECT
-  USING (
-    id IN (
-      SELECT board_id FROM board_members WHERE user_id = auth.uid()
-    )
-  );
+  USING (is_board_member(id));
 
 CREATE POLICY "Users can create boards"
   ON boards FOR INSERT
@@ -246,18 +255,22 @@ CREATE POLICY "Users can create boards"
 CREATE POLICY "Board owners can update boards"
   ON boards FOR UPDATE
   USING (
-    id IN (
-      SELECT board_id FROM board_members 
-      WHERE user_id = auth.uid() AND role = 'owner'
+    is_board_member(id) AND EXISTS (
+      SELECT 1 FROM board_members 
+      WHERE board_id = boards.id 
+        AND user_id = auth.uid() 
+        AND role = 'owner'
     )
   );
 
 CREATE POLICY "Board owners can delete boards"
   ON boards FOR DELETE
   USING (
-    id IN (
-      SELECT board_id FROM board_members 
-      WHERE user_id = auth.uid() AND role = 'owner'
+    is_board_member(id) AND EXISTS (
+      SELECT 1 FROM board_members 
+      WHERE board_id = boards.id 
+        AND user_id = auth.uid() 
+        AND role = 'owner'
     )
   );
 
@@ -272,36 +285,38 @@ DROP POLICY IF EXISTS "Users can delete lists in their boards" ON lists;
 
 CREATE POLICY "Users can view lists in accessible boards"
   ON lists FOR SELECT
-  USING (
-    board_id IN (
-      SELECT board_id FROM board_members WHERE user_id = auth.uid()
-    )
-  );
+  USING (is_board_member(board_id));
 
 CREATE POLICY "Editors can create lists"
   ON lists FOR INSERT
   WITH CHECK (
-    board_id IN (
-      SELECT board_id FROM board_members 
-      WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
+    is_board_member(board_id) AND EXISTS (
+      SELECT 1 FROM board_members 
+      WHERE board_id = lists.board_id 
+        AND user_id = auth.uid() 
+        AND role IN ('owner', 'editor')
     )
   );
 
 CREATE POLICY "Editors can update lists"
   ON lists FOR UPDATE
   USING (
-    board_id IN (
-      SELECT board_id FROM board_members 
-      WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
+    is_board_member(board_id) AND EXISTS (
+      SELECT 1 FROM board_members 
+      WHERE board_id = lists.board_id 
+        AND user_id = auth.uid() 
+        AND role IN ('owner', 'editor')
     )
   );
 
 CREATE POLICY "Editors can delete lists"
   ON lists FOR DELETE
   USING (
-    board_id IN (
-      SELECT board_id FROM board_members 
-      WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
+    is_board_member(board_id) AND EXISTS (
+      SELECT 1 FROM board_members 
+      WHERE board_id = lists.board_id 
+        AND user_id = auth.uid() 
+        AND role IN ('owner', 'editor')
     )
   );
 
@@ -317,40 +332,45 @@ DROP POLICY IF EXISTS "Users can delete cards in their boards" ON cards;
 CREATE POLICY "Users can view cards in accessible boards"
   ON cards FOR SELECT
   USING (
-    list_id IN (
-      SELECT l.id FROM lists l
-      JOIN board_members bm ON l.board_id = bm.board_id
-      WHERE bm.user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM lists l
+      WHERE l.id = cards.list_id AND is_board_member(l.board_id)
     )
   );
 
 CREATE POLICY "Editors can create cards"
   ON cards FOR INSERT
   WITH CHECK (
-    list_id IN (
-      SELECT l.id FROM lists l
+    EXISTS (
+      SELECT 1 FROM lists l
       JOIN board_members bm ON l.board_id = bm.board_id
-      WHERE bm.user_id = auth.uid() AND bm.role IN ('owner', 'editor')
+      WHERE l.id = cards.list_id 
+        AND bm.user_id = auth.uid() 
+        AND bm.role IN ('owner', 'editor')
     )
   );
 
 CREATE POLICY "Editors can update cards"
   ON cards FOR UPDATE
   USING (
-    list_id IN (
-      SELECT l.id FROM lists l
+    EXISTS (
+      SELECT 1 FROM lists l
       JOIN board_members bm ON l.board_id = bm.board_id
-      WHERE bm.user_id = auth.uid() AND bm.role IN ('owner', 'editor')
+      WHERE l.id = cards.list_id 
+        AND bm.user_id = auth.uid() 
+        AND bm.role IN ('owner', 'editor')
     )
   );
 
 CREATE POLICY "Editors can delete cards"
   ON cards FOR DELETE
   USING (
-    list_id IN (
-      SELECT l.id FROM lists l
+    EXISTS (
+      SELECT 1 FROM lists l
       JOIN board_members bm ON l.board_id = bm.board_id
-      WHERE bm.user_id = auth.uid() AND bm.role IN ('owner', 'editor')
+      WHERE l.id = cards.list_id 
+        AND bm.user_id = auth.uid() 
+        AND bm.role IN ('owner', 'editor')
     )
   );
 
