@@ -3,7 +3,7 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { supabase } from '../lib/supabase';
-import { UserPlusIcon, UsersIcon, CrownIcon, EditIcon, TrashIcon } from '../icons';
+import { UserPlusIcon, UsersIcon, CrownIcon, EditIcon, TrashIcon, LogOutIcon } from '../icons';
 
 interface BoardMember {
   id: string;
@@ -100,6 +100,51 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
     }
 
     setMembers(members.filter(m => m.id !== memberId));
+  };
+
+  const changeRole = async (memberId: string, newRole: 'editor' | 'viewer') => {
+    const { error } = await supabase
+      .from('board_members')
+      .update({ role: newRole })
+      .eq('id', memberId);
+
+    if (error) {
+      console.error('Error changing role:', error);
+      alert('Failed to change member role');
+      return;
+    }
+
+    setMembers(members.map(m => m.id === memberId ? { ...m, role: newRole } : m));
+  };
+
+  const leaveBoard = async () => {
+    const currentUser = (await supabase.auth.getUser()).data.user;
+    if (!currentUser) return;
+
+    const myMembership = members.find(m => m.user_id === currentUser.id);
+    if (!myMembership) return;
+
+    if (myMembership.role === 'owner') {
+      alert('Board owners cannot leave. Please transfer ownership first or delete the board.');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to leave this board?')) return;
+
+    const { error } = await supabase
+      .from('board_members')
+      .delete()
+      .eq('id', myMembership.id);
+
+    if (error) {
+      console.error('Error leaving board:', error);
+      alert('Failed to leave board');
+      return;
+    }
+
+    alert('You have left the board');
+    onClose();
+    window.location.reload(); // Refresh to update board list
   };
 
   const getRoleBadge = (role: string) => {
@@ -200,42 +245,65 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
                   No members yet
                 </p>
               ) : (
-                members.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                        <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">
-                          {member.email?.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {member.email}
-                        </p>
-                        {!member.accepted_at && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Pending invitation
+                <>
+                  {members.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                          <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                            {member.email?.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {member.email}
                           </p>
+                          {!member.accepted_at && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Pending invitation
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {member.role === 'owner' ? (
+                          getRoleBadge(member.role)
+                        ) : (
+                          <select
+                            value={member.role}
+                            onChange={(e) => changeRole(member.id, e.target.value as 'editor' | 'viewer')}
+                            className="px-2 py-1 rounded-lg text-xs font-medium border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                          >
+                            <option value="editor">Editor</option>
+                            <option value="viewer">Viewer</option>
+                          </select>
+                        )}
+                        {member.role !== 'owner' && (
+                          <button
+                            onClick={() => removeMember(member.id)}
+                            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                            title="Remove member"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {getRoleBadge(member.role)}
-                      {member.role !== 'owner' && (
-                        <button
-                          onClick={() => removeMember(member.id)}
-                          className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title="Remove member"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
+                  ))}
+                  
+                  {/* Leave Board Button */}
+                  <Button
+                    onClick={leaveBoard}
+                    variant="secondary"
+                    icon={LogOutIcon}
+                    className="w-full mt-4 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    Leave Board
+                  </Button>
+                </>
               )}
             </div>
           )}

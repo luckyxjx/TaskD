@@ -29,9 +29,10 @@ interface BoardStats {
 interface DashboardProps {
   onBoardClick: (boardId: string) => void;
   onProfileClick: () => void;
+  onInvitationsClick?: () => void;
 }
 
-export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
+export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: DashboardProps) {
   const { user } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -386,12 +387,25 @@ export function Dashboard({ onBoardClick, onProfileClick }: DashboardProps) {
                 />
               </div>
             </div>
-            <button
-              onClick={onProfileClick}
-              className="ml-4 w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-400 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-all duration-200"
-            >
-              <User className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-3 ml-4">
+              {onInvitationsClick && (
+                <button
+                  onClick={onInvitationsClick}
+                  className="p-3 rounded-xl bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all duration-200"
+                  title="View invitations"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={onProfileClick}
+                className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-400 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-all duration-200"
+              >
+                <User className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         </header>
 

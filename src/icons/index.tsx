@@ -19,3 +19,8 @@ export { ShareIcon } from './Share';
 export { UsersIcon } from './Users';
 export { UserPlusIcon } from './UserPlus';
 export { CrownIcon } from './Crown';
+export { SendIcon } from './Send';
+export { ClockIcon } from './Clock';
+export { MessageSquareIcon } from './MessageSquare';
+export { BellIcon } from './Bell';
+export { ActivityIcon } from './Activity';

@@ -5,8 +5,9 @@ import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
 import { Board } from './pages/Board';
 import { Profile } from './pages/Profile';
+import { Invitations } from './pages/Invitations';
 
-type View = 'login' | 'signup' | 'dashboard' | 'board' | 'profile';
+type View = 'login' | 'signup' | 'dashboard' | 'board' | 'profile' | 'invitations';
 
 function App() {
   const { user, loading } = useAuth();
@@ -40,6 +41,18 @@ function App() {
     return <Profile onBack={() => setCurrentView('dashboard')} />;
   }
 
+  if (currentView === 'invitations') {
+    return (
+      <Invitations
+        onBack={() => setCurrentView('dashboard')}
+        onBoardClick={(boardId) => {
+          setSelectedBoardId(boardId);
+          setCurrentView('board');
+        }}
+      />
+    );
+  }
+
   if (currentView === 'board' && selectedBoardId) {
     return (
       <Board
@@ -57,6 +70,7 @@ function App() {
         setCurrentView('board');
       }}
       onProfileClick={() => setCurrentView('profile')}
+      onInvitationsClick={() => setCurrentView('invitations')}
     />
   );
 }

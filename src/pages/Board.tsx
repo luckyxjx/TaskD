@@ -5,7 +5,9 @@ import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { ShareBoardModal } from '../components/ShareBoardModal';
-import { ShareIcon } from '../icons';
+import { CardComments } from '../components/CardComments';
+import { ActivityFeed } from '../components/ActivityFeed';
+import { ShareIcon, ActivityIcon } from '../icons';
 
 interface List {
   id: string;
@@ -41,6 +43,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [showRenameBoardModal, setShowRenameBoardModal] = useState(false);
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [newListName, setNewListName] = useState('');
@@ -56,6 +59,44 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
 
   useEffect(() => {
     loadBoardData();
+
+    // Subscribe to real-time changes for lists
+    const listsSubscription = supabase
+      .channel(`lists:${boardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lists',
+          filter: `board_id=eq.${boardId}`
+        },
+        () => {
+          loadBoardData();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to real-time changes for cards
+    const cardsSubscription = supabase
+      .channel(`cards:${boardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cards'
+        },
+        () => {
+          loadBoardData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      listsSubscription.unsubscribe();
+      cardsSubscription.unsubscribe();
+    };
   }, [boardId]);
 
   const loadBoardData = async () => {
@@ -115,6 +156,16 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       setLists([...lists, data]);
       setNewListName('');
       setShowNewListModal(false);
+
+      // Log activity
+      await supabase.from('activities').insert([{
+        board_id: boardId,
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+        action: 'created',
+        entity_type: 'list',
+        entity_id: data.id,
+        metadata: { name: data.name }
+      }]);
     }
   };
 
@@ -186,6 +237,16 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       setNewCardPriority('medium');
       setShowNewCardModal(false);
       setSelectedListId(null);
+
+      // Log activity
+      await supabase.from('activities').insert([{
+        board_id: boardId,
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+        action: 'created',
+        entity_type: 'card',
+        entity_id: data.id,
+        metadata: { title: data.title }
+      }]);
     }
   };
 
@@ -215,6 +276,16 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     );
     setShowCardModal(false);
     setSelectedCard(null);
+
+    // Log activity
+    await supabase.from('activities').insert([{
+      board_id: boardId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      action: 'updated',
+      entity_type: 'card',
+      entity_id: selectedCard.id,
+      metadata: { title: cardModalTitle }
+    }]);
   };
 
   const deleteCard = async () => {
@@ -228,6 +299,17 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     }
 
     setCards(cards.filter((c) => c.id !== selectedCard.id));
+    
+    // Log activity
+    await supabase.from('activities').insert([{
+      board_id: boardId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      action: 'deleted',
+      entity_type: 'card',
+      entity_id: selectedCard.id,
+      metadata: { title: selectedCard.title }
+    }]);
+
     setShowCardModal(false);
     setSelectedCard(null);
   };
@@ -259,6 +341,24 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       setDraggedCard(null);
       return;
     }
+
+    // Get list names for activity log
+    const fromList = lists.find(l => l.id === draggedCard.list_id);
+    const toList = lists.find(l => l.id === targetListId);
+
+    // Log activity
+    await supabase.from('activities').insert([{
+      board_id: boardId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      action: 'moved',
+      entity_type: 'card',
+      entity_id: draggedCard.id,
+      metadata: { 
+        title: draggedCard.title,
+        from_list: fromList?.name,
+        to_list: toList?.name
+      }
+    }]);
 
     setCards(
       cards.map((c) =>
@@ -316,6 +416,8 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   };
 
   const deleteList = async (listId: string) => {
+    const listToDelete = lists.find(l => l.id === listId);
+    
     const { error } = await supabase.from('lists').delete().eq('id', listId);
 
     if (error) {
@@ -326,6 +428,18 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     setLists(lists.filter((l) => l.id !== listId));
     setCards(cards.filter((c) => c.list_id !== listId));
     setShowListMenu(null);
+
+    // Log activity
+    if (listToDelete) {
+      await supabase.from('activities').insert([{
+        board_id: boardId,
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+        action: 'deleted',
+        entity_type: 'list',
+        entity_id: listId,
+        metadata: { name: listToDelete.name }
+      }]);
+    }
   };
 
   const openCardModal = (card: Card) => {
@@ -397,6 +511,16 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                 <ShareIcon className="w-4 h-4" />
                 <span className="text-sm font-medium">Share</span>
               </button>
+
+              {/* Activity Feed Button */}
+              <button
+                onClick={() => setShowActivityFeed(!showActivityFeed)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all duration-200"
+                title="Activity feed"
+              >
+                <ActivityIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">Activity</span>
+              </button>
               
               {/* Settings Menu */}
               <div className="relative">
@@ -449,7 +573,9 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       </header>
 
       <div className="flex-1 overflow-x-auto p-6 custom-scrollbar">
-        <div className="flex gap-4 h-full min-w-max pb-4">
+        <div className="flex gap-4 h-full">
+          {/* Lists Container */}
+          <div className="flex gap-4 min-w-max pb-4 flex-1">
           {lists.map((list, index) => (
             <div
               key={list.id}
@@ -538,6 +664,14 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             </div>
             <span className="font-semibold">Add list</span>
           </button>
+          </div>
+
+          {/* Activity Feed Sidebar */}
+          {showActivityFeed && (
+            <div className="w-80 flex-shrink-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
+              <ActivityFeed boardId={boardId} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -685,6 +819,14 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
               placeholder="Add a more detailed description..."
             />
           </div>
+
+          {/* Comments Section */}
+          {selectedCard && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-5">
+              <CardComments cardId={selectedCard.id} />
+            </div>
+          )}
+
           <div className="flex gap-3 justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button
               onClick={deleteCard}
