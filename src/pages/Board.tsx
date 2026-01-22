@@ -777,79 +777,83 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         isOpen={showCardModal}
         onClose={() => setShowCardModal(false)}
         title="Card Details"
-        size="lg"
+        size="xl"
       >
-        <div className="space-y-5">
-          <Input
-            label="Title"
-            value={cardModalTitle}
-            onChange={(e) => setCardModalTitle(e.target.value)}
-            placeholder="Card title"
-          />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Priority
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {(['low', 'medium', 'high', 'urgent'] as const).map((priority) => (
-                <button
-                  key={priority}
-                  type="button"
-                  onClick={() => setCardModalPriority(priority)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all duration-200 ${
-                    cardModalPriority === priority
-                      ? getPriorityColor(priority) + ' scale-105'
-                      : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  {getPriorityLabel(priority)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Description
-            </label>
-            <textarea
-              value={cardModalDescription}
-              onChange={(e) => setCardModalDescription(e.target.value)}
-              rows={6}
-              className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 resize-none placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100"
-              placeholder="Add a more detailed description..."
+        <div className="flex gap-6 max-h-[70vh]">
+          {/* Left Column - Card Details */}
+          <div className="flex-1 space-y-5 overflow-y-auto custom-scrollbar pr-2">
+            <Input
+              label="Title"
+              value={cardModalTitle}
+              onChange={(e) => setCardModalTitle(e.target.value)}
+              placeholder="Card title"
             />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Priority
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['low', 'medium', 'high', 'urgent'] as const).map((priority) => (
+                  <button
+                    key={priority}
+                    type="button"
+                    onClick={() => setCardModalPriority(priority)}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all duration-200 ${
+                      cardModalPriority === priority
+                        ? getPriorityColor(priority) + ' scale-105'
+                        : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    {getPriorityLabel(priority)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Description
+              </label>
+              <textarea
+                value={cardModalDescription}
+                onChange={(e) => setCardModalDescription(e.target.value)}
+                rows={8}
+                className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 resize-none placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100"
+                placeholder="Add a more detailed description..."
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                onClick={deleteCard}
+                variant="danger"
+                icon={Trash2}
+              >
+                Delete Card
+              </Button>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => setShowCardModal(false)}
+                  variant="secondary"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={updateCard}
+                  variant="primary"
+                  icon={Edit3}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </div>
           </div>
 
-          {/* Comments Section */}
-          {selectedCard && (
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-5">
+          {/* Right Column - Comments */}
+          <div className="w-96 border-l border-gray-200 dark:border-gray-700 pl-6 overflow-y-auto custom-scrollbar">
+            {selectedCard && (
               <CardComments cardId={selectedCard.id} />
-            </div>
-          )}
-
-          <div className="flex gap-3 justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button
-              onClick={deleteCard}
-              variant="danger"
-              icon={Trash2}
-            >
-              Delete Card
-            </Button>
-            <div className="flex gap-3">
-              <Button
-                onClick={() => setShowCardModal(false)}
-                variant="secondary"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={updateCard}
-                variant="primary"
-                icon={Edit3}
-              >
-                Save Changes
-              </Button>
-            </div>
+            )}
           </div>
         </div>
       </Modal>
