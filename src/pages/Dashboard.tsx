@@ -124,7 +124,48 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
   };
 
   const loadBoards = async (workspaceId: string) => {
-    // Load boards owned by the workspace
+    // Special case: if workspaceId is 'shared', load only shared boards
+    if (workspaceId === 'shared') {
+      // Load boards shared with the user (where they are a member)
+      const { data: memberData, error: sharedError } = await supabase
+        .from('board_members')
+        .select('board_id')
+        .eq('user_id', user?.id);
+
+      if (sharedError) {
+        console.error('Error loading shared boards:', sharedError);
+        setBoards([]);
+        return;
+      }
+
+      // Get the board IDs that are shared with the user
+      const sharedBoardIds = (memberData || []).map(m => m.board_id);
+
+      // Fetch the actual board data for shared boards
+      if (sharedBoardIds.length > 0) {
+        const { data: sharedBoardsData, error: sharedBoardsError } = await supabase
+          .from('boards')
+          .select('*')
+          .in('id', sharedBoardIds);
+
+        if (sharedBoardsError) {
+          console.error('Error loading shared board details:', sharedBoardsError);
+          setBoards([]);
+        } else {
+          // Filter out boards from workspaces the user owns
+          const ownedWorkspaceIds = workspaces.map(w => w.id);
+          const trulySharedBoards = (sharedBoardsData || []).filter(
+            board => !ownedWorkspaceIds.includes(board.workspace_id)
+          );
+          setBoards(trulySharedBoards);
+        }
+      } else {
+        setBoards([]);
+      }
+      return;
+    }
+
+    // Normal case: Load boards owned by the workspace
     const { data: ownedBoards, error: ownedError } = await supabase
       .from('boards')
       .select('*')
@@ -136,44 +177,7 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
       return;
     }
 
-    // Load boards shared with the user (where they are a member)
-    const { data: memberData, error: sharedError } = await supabase
-      .from('board_members')
-      .select('board_id')
-      .eq('user_id', user?.id);
-
-    if (sharedError) {
-      console.error('Error loading shared boards:', sharedError);
-    }
-
-    // Get the board IDs that are shared with the user
-    const sharedBoardIds = (memberData || []).map(m => m.board_id);
-
-    // Fetch the actual board data for shared boards (excluding current workspace)
-    let sharedBoards: Board[] = [];
-    if (sharedBoardIds.length > 0) {
-      const { data: sharedBoardsData, error: sharedBoardsError } = await supabase
-        .from('boards')
-        .select('*')
-        .in('id', sharedBoardIds)
-        .neq('workspace_id', workspaceId);
-
-      if (sharedBoardsError) {
-        console.error('Error loading shared board details:', sharedBoardsError);
-      } else {
-        sharedBoards = sharedBoardsData || [];
-      }
-    }
-
-    // Combine owned and shared boards
-    const allBoards = [...(ownedBoards || []), ...sharedBoards];
-    
-    // Remove duplicates by board id
-    const uniqueBoards = Array.from(
-      new Map(allBoards.map(board => [board.id, board])).values()
-    );
-
-    setBoards(uniqueBoards);
+    setBoards(ownedBoards || []);
   };
 
   const loadBoardStats = async () => {
@@ -500,6 +504,24 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
                     )}
                   </div>
                 ))}
+                
+                {/* Shared with Me Section */}
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => setSelectedWorkspace('shared')}
+                    className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center gap-2 ${
+                      selectedWorkspace === 'shared'
+                        ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 shadow-sm'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    <span className="font-medium">Shared with Me</span>
+                  </button>
+                </div>
+
                 <button
                   onClick={() => setShowNewWorkspaceModal(true)}
                   className="w-full text-left px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-all duration-200 flex items-center gap-2 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500"
@@ -558,17 +580,25 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
             <div className="flex items-center justify-between mb-8 animate-fade-in-down">
               <div>
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                  {workspaces.find((w) => w.id === selectedWorkspace)?.name || 'Boards'}
+                  {selectedWorkspace === 'shared' 
+                    ? 'Shared with Me' 
+                    : workspaces.find((w) => w.id === selectedWorkspace)?.name || 'Boards'}
                 </h1>
-                <p className="text-gray-600 dark:text-gray-400">Organize your work and boost productivity</p>
+                <p className="text-gray-600 dark:text-gray-400">
+                  {selectedWorkspace === 'shared'
+                    ? 'Boards that have been shared with you'
+                    : 'Organize your work and boost productivity'}
+                </p>
               </div>
-              <Button
-                onClick={() => setShowNewBoardModal(true)}
-                variant="primary"
-                icon={Plus}
-              >
-                New Board
-              </Button>
+              {selectedWorkspace !== 'shared' && (
+                <Button
+                  onClick={() => setShowNewBoardModal(true)}
+                  variant="primary"
+                  icon={Plus}
+                >
+                  New Board
+                </Button>
+              )}
             </div>
 
             {filteredBoards.length === 0 ? (
@@ -598,7 +628,6 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
                 {filteredBoards.map((board, index) => {
                   const stats = boardStats[board.id] || { total: 0, completed: 0 };
                   const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
-                  const isSharedBoard = board.workspace_id !== selectedWorkspace;
                   
                   return (
                   <Card
@@ -608,16 +637,6 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
                     className="group relative"
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
-                    {isSharedBoard && (
-                      <div className="absolute top-3 left-3 z-10">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                          </svg>
-                          Shared
-                        </span>
-                      </div>
-                    )}
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
                         <LayoutGrid className="w-6 h-6 text-primary-600 dark:text-primary-400" />
