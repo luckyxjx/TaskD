@@ -6,8 +6,9 @@ import { Dashboard } from './pages/Dashboard';
 import { Board } from './pages/Board';
 import { Profile } from './pages/Profile';
 import { Invitations } from './pages/Invitations';
+import { SharedBoards } from './pages/SharedBoards';
 
-type View = 'login' | 'signup' | 'dashboard' | 'board' | 'profile' | 'invitations';
+type View = 'login' | 'signup' | 'dashboard' | 'board' | 'profile' | 'invitations' | 'shared';
 
 function App() {
   const { user, loading } = useAuth();
@@ -53,6 +54,19 @@ function App() {
     );
   }
 
+  if (currentView === 'shared') {
+    return (
+      <SharedBoards
+        onBack={() => setCurrentView('dashboard')}
+        onBoardClick={(boardId) => {
+          setSelectedBoardId(boardId);
+          setCurrentView('board');
+        }}
+        onProfileClick={() => setCurrentView('profile')}
+      />
+    );
+  }
+
   if (currentView === 'board' && selectedBoardId) {
     return (
       <Board
@@ -71,6 +85,7 @@ function App() {
       }}
       onProfileClick={() => setCurrentView('profile')}
       onInvitationsClick={() => setCurrentView('invitations')}
+      onSharedBoardsClick={() => setCurrentView('shared')}
     />
   );
 }

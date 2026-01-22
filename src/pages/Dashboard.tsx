@@ -30,9 +30,10 @@ interface DashboardProps {
   onBoardClick: (boardId: string) => void;
   onProfileClick: () => void;
   onInvitationsClick?: () => void;
+  onSharedBoardsClick?: () => void;
 }
 
-export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: DashboardProps) {
+export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, onSharedBoardsClick }: DashboardProps) {
   const { user } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -124,48 +125,7 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
   };
 
   const loadBoards = async (workspaceId: string) => {
-    // Special case: if workspaceId is 'shared', load only shared boards
-    if (workspaceId === 'shared') {
-      // Load boards shared with the user (where they are a member)
-      const { data: memberData, error: sharedError } = await supabase
-        .from('board_members')
-        .select('board_id')
-        .eq('user_id', user?.id);
-
-      if (sharedError) {
-        console.error('Error loading shared boards:', sharedError);
-        setBoards([]);
-        return;
-      }
-
-      // Get the board IDs that are shared with the user
-      const sharedBoardIds = (memberData || []).map(m => m.board_id);
-
-      // Fetch the actual board data for shared boards
-      if (sharedBoardIds.length > 0) {
-        const { data: sharedBoardsData, error: sharedBoardsError } = await supabase
-          .from('boards')
-          .select('*')
-          .in('id', sharedBoardIds);
-
-        if (sharedBoardsError) {
-          console.error('Error loading shared board details:', sharedBoardsError);
-          setBoards([]);
-        } else {
-          // Filter out boards from workspaces the user owns
-          const ownedWorkspaceIds = workspaces.map(w => w.id);
-          const trulySharedBoards = (sharedBoardsData || []).filter(
-            board => !ownedWorkspaceIds.includes(board.workspace_id)
-          );
-          setBoards(trulySharedBoards);
-        }
-      } else {
-        setBoards([]);
-      }
-      return;
-    }
-
-    // Normal case: Load boards owned by the workspace
+    // Load boards owned by the workspace
     const { data: ownedBoards, error: ownedError } = await supabase
       .from('boards')
       .select('*')
@@ -508,12 +468,8 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
                 {/* Shared with Me Section */}
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                   <button
-                    onClick={() => setSelectedWorkspace('shared')}
-                    className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center gap-2 ${
-                      selectedWorkspace === 'shared'
-                        ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 shadow-sm'
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                    }`}
+                    onClick={onSharedBoardsClick}
+                    className="w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -580,25 +536,17 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick }: 
             <div className="flex items-center justify-between mb-8 animate-fade-in-down">
               <div>
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                  {selectedWorkspace === 'shared' 
-                    ? 'Shared with Me' 
-                    : workspaces.find((w) => w.id === selectedWorkspace)?.name || 'Boards'}
+                  {workspaces.find((w) => w.id === selectedWorkspace)?.name || 'Boards'}
                 </h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                  {selectedWorkspace === 'shared'
-                    ? 'Boards that have been shared with you'
-                    : 'Organize your work and boost productivity'}
-                </p>
+                <p className="text-gray-600 dark:text-gray-400">Organize your work and boost productivity</p>
               </div>
-              {selectedWorkspace !== 'shared' && (
-                <Button
-                  onClick={() => setShowNewBoardModal(true)}
-                  variant="primary"
-                  icon={Plus}
-                >
-                  New Board
-                </Button>
-              )}
+              <Button
+                onClick={() => setShowNewBoardModal(true)}
+                variant="primary"
+                icon={Plus}
+              >
+                New Board
+              </Button>
             </div>
 
             {filteredBoards.length === 0 ? (
