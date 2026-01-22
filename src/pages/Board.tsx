@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { ShareBoardModal } from '../components/ShareBoardModal';
+import { ShareIcon } from '../icons';
 
 interface List {
   id: string;
@@ -37,6 +39,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [showNewCardModal, setShowNewCardModal] = useState(false);
   const [showRenameBoardModal, setShowRenameBoardModal] = useState(false);
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [newListName, setNewListName] = useState('');
@@ -308,39 +311,52 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
               {boardName}
             </h1>
-            <div className="relative">
+            <div className="flex items-center gap-2">
+              {/* Share Button */}
               <button
-                onClick={() => setShowBoardMenu(!showBoardMenu)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-all duration-200"
-                title="Board settings"
+                onClick={() => setShowShareModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-all duration-200"
+                title="Share board"
               >
-                <MoreVertical className="w-5 h-5" />
+                <ShareIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">Share</span>
               </button>
-              {showBoardMenu && (
-                <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
-                  <button
-                    onClick={() => {
-                      setRenameBoardName(boardName);
-                      setShowRenameBoardModal(true);
-                      setShowBoardMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                    Rename Board
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowDeleteBoardModal(true);
-                      setShowBoardMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete Board
-                  </button>
-                </div>
-              )}
+              
+              {/* Settings Menu */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowBoardMenu(!showBoardMenu)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-all duration-200"
+                  title="Board settings"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+                {showBoardMenu && (
+                  <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
+                    <button
+                      onClick={() => {
+                        setRenameBoardName(boardName);
+                        setShowRenameBoardModal(true);
+                        setShowBoardMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Rename Board
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDeleteBoardModal(true);
+                        setShowBoardMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete Board
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="relative max-w-md">
@@ -643,6 +659,14 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           </div>
         </div>
       </Modal>
+
+      {/* Share Board Modal */}
+      <ShareBoardModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        boardId={boardId}
+        boardName={boardName}
+      />
     </div>
   );
 }

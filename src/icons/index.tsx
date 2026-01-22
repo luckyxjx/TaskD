@@ -15,3 +15,7 @@ export { GithubIcon } from './Github';
 export { LoaderIcon } from './Loader';
 export { MoreVerticalIcon } from './MoreVertical';
 export { SettingsIcon } from './Settings';
+export { ShareIcon } from './Share';
+export { UsersIcon } from './Users';
+export { UserPlusIcon } from './UserPlus';
+export { CrownIcon } from './Crown';

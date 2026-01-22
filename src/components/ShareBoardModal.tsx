@@ -1,0 +1,246 @@
+import { useState } from 'react';
+import { Modal } from './Modal';
+import { Button } from './Button';
+import { Input } from './Input';
+import { supabase } from '../lib/supabase';
+import { UserPlusIcon, UsersIcon, CrownIcon, EditIcon, TrashIcon } from '../icons';
+
+interface BoardMember {
+  id: string;
+  user_id: string;
+  role: 'owner' | 'editor' | 'viewer';
+  email?: string;
+  accepted_at: string | null;
+}
+
+interface ShareBoardModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  boardId: string;
+  boardName: string;
+}
+
+export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBoardModalProps) {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'editor' | 'viewer'>('editor');
+  const [loading, setLoading] = useState(false);
+  const [members, setMembers] = useState<BoardMember[]>([]);
+  const [showMembers, setShowMembers] = useState(false);
+
+  const loadMembers = async () => {
+    const { data, error } = await supabase
+      .from('board_members')
+      .select('*')
+      .eq('board_id', boardId);
+
+    if (error) {
+      console.error('Error loading members:', error);
+      return;
+    }
+
+    // Get user emails
+    const membersWithEmails = await Promise.all(
+      (data || []).map(async (member) => {
+        const { data: userData } = await supabase
+          .from('auth.users')
+          .select('email')
+          .eq('id', member.user_id)
+          .single();
+        
+        return {
+          ...member,
+          email: userData?.email || 'Unknown'
+        };
+      })
+    );
+
+    setMembers(membersWithEmails);
+    setShowMembers(true);
+  };
+
+  const inviteUser = async () => {
+    if (!email.trim()) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('board_invitations')
+        .insert([{
+          board_id: boardId,
+          email: email.trim().toLowerCase(),
+          role,
+          invited_by: (await supabase.auth.getUser()).data.user?.id
+        }]);
+
+      if (error) throw error;
+
+      // TODO: Send email notification
+      alert(`Invitation sent to ${email}!`);
+      setEmail('');
+    } catch (error: any) {
+      console.error('Error inviting user:', error);
+      alert(error.message || 'Failed to send invitation');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeMember = async (memberId: string) => {
+    if (!confirm('Remove this member from the board?')) return;
+
+    const { error } = await supabase
+      .from('board_members')
+      .delete()
+      .eq('id', memberId);
+
+    if (error) {
+      console.error('Error removing member:', error);
+      alert('Failed to remove member');
+      return;
+    }
+
+    setMembers(members.filter(m => m.id !== memberId));
+  };
+
+  const getRoleBadge = (role: string) => {
+    const styles = {
+      owner: 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
+      editor: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400',
+      viewer: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+    };
+
+    const icons = {
+      owner: <CrownIcon className="w-3 h-3" />,
+      editor: <EditIcon className="w-3 h-3" />,
+      viewer: <UsersIcon className="w-3 h-3" />
+    };
+
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${styles[role as keyof typeof styles]}`}>
+        {icons[role as keyof typeof icons]}
+        {role.charAt(0).toUpperCase() + role.slice(1)}
+      </span>
+    );
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Share "${boardName}"`} size="md">
+      <div className="space-y-6">
+        {/* Invite Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+            Invite by Email
+          </h3>
+          <div className="space-y-3">
+            <Input
+              label="Email Address"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="colleague@example.com"
+              onKeyDown={(e) => e.key === 'Enter' && inviteUser()}
+            />
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Role
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRole('editor')}
+                  className={`flex-1 px-4 py-2 rounded-lg border-2 transition-all ${
+                    role === 'editor'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-primary-300'
+                  }`}
+                >
+                  <div className="text-sm font-medium">Editor</div>
+                  <div className="text-xs opacity-75">Can edit cards</div>
+                </button>
+                <button
+                  onClick={() => setRole('viewer')}
+                  className={`flex-1 px-4 py-2 rounded-lg border-2 transition-all ${
+                    role === 'viewer'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-primary-300'
+                  }`}
+                >
+                  <div className="text-sm font-medium">Viewer</div>
+                  <div className="text-xs opacity-75">Can only view</div>
+                </button>
+              </div>
+            </div>
+
+            <Button
+              onClick={inviteUser}
+              variant="primary"
+              icon={UserPlusIcon}
+              className="w-full"
+              disabled={loading || !email.trim()}
+            >
+              {loading ? 'Sending...' : 'Send Invitation'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Members Section */}
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          <button
+            onClick={loadMembers}
+            className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+          >
+            <UsersIcon className="w-4 h-4" />
+            {showMembers ? 'Hide Members' : 'View Members'}
+          </button>
+
+          {showMembers && (
+            <div className="mt-4 space-y-2">
+              {members.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                  No members yet
+                </p>
+              ) : (
+                members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                        <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                          {member.email?.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {member.email}
+                        </p>
+                        {!member.accepted_at && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Pending invitation
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getRoleBadge(member.role)}
+                      {member.role !== 'owner' && (
+                        <button
+                          onClick={() => removeMember(member.id)}
+                          className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                          title="Remove member"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
