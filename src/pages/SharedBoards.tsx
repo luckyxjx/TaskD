@@ -37,11 +37,16 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
       return;
     }
 
+    console.log('🔍 Loading shared boards for user:', user.user.id);
+
     // Get all board memberships for the current user
     const { data: memberData, error: memberError } = await supabase
       .from('board_members')
       .select('board_id, role, invited_by')
       .eq('user_id', user.user.id);
+
+    console.log('📊 Board members data:', memberData);
+    console.log('❌ Board members error:', memberError);
 
     if (memberError) {
       console.error('Error loading board members:', memberError);
@@ -50,6 +55,7 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
     }
 
     if (!memberData || memberData.length === 0) {
+      console.log('⚠️ No board memberships found');
       setSharedBoards([]);
       setLoading(false);
       return;
@@ -57,12 +63,22 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
 
     // Get board IDs
     const boardIds = memberData.map(m => m.board_id);
+    console.log('🎯 Board IDs to fetch:', boardIds);
 
-    // Fetch board details
+    // Fetch board details WITH workspace info
     const { data: boardsData, error: boardsError } = await supabase
       .from('boards')
-      .select('*')
+      .select(`
+        *,
+        workspaces (
+          id,
+          owner_id
+        )
+      `)
       .in('id', boardIds);
+
+    console.log('📋 Boards data:', boardsData);
+    console.log('❌ Boards error:', boardsError);
 
     if (boardsError) {
       console.error('Error loading boards:', boardsError);
@@ -70,42 +86,43 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
       return;
     }
 
-    // Get workspace IDs to check ownership
-    const { data: workspacesData } = await supabase
-      .from('workspaces')
-      .select('id')
-      .eq('owner_id', user.user.id);
+    // Filter out boards where user is the WORKSPACE OWNER
+    // (Keep boards where user is just a member, not the workspace owner)
+    const filteredBoards = (boardsData || []).filter(board => {
+      const isWorkspaceOwner = board.workspaces?.owner_id === user.user.id;
+      console.log(`Board "${board.name}": workspace owner = ${board.workspaces?.owner_id}, current user = ${user.user.id}, is owner = ${isWorkspaceOwner}`);
+      return !isWorkspaceOwner;
+    });
 
-    const ownedWorkspaceIds = (workspacesData || []).map(w => w.id);
+    console.log('✅ Filtered shared boards:', filteredBoards);
 
-    // Combine data and filter out boards from owned workspaces
+    // Combine data with member details
     const sharedBoardsWithDetails = await Promise.all(
-      (boardsData || [])
-        .filter(board => !ownedWorkspaceIds.includes(board.workspace_id))
-        .map(async (board) => {
-          const membership = memberData.find(m => m.board_id === board.id);
+      filteredBoards.map(async (board) => {
+        const membership = memberData.find(m => m.board_id === board.id);
+        
+        // Get inviter email
+        let inviterEmail = 'Unknown';
+        if (membership?.invited_by) {
+          const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
+            user_uuid: membership.invited_by
+          });
           
-          // Get inviter email
-          let inviterEmail = 'Unknown';
-          if (membership?.invited_by) {
-            const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
-              user_uuid: membership.invited_by
-            });
-            
-            if (!emailError && emailData) {
-              inviterEmail = emailData;
-            }
+          if (!emailError && emailData) {
+            inviterEmail = emailData;
           }
+        }
 
-          return {
-            ...board,
-            role: membership?.role || 'viewer',
-            invited_by: membership?.invited_by || '',
-            invited_by_email: inviterEmail
-          };
-        })
+        return {
+          ...board,
+          role: membership?.role || 'viewer',
+          invited_by: membership?.invited_by || '',
+          invited_by_email: inviterEmail
+        };
+      })
     );
 
+    console.log('🎉 Final shared boards with details:', sharedBoardsWithDetails);
     setSharedBoards(sharedBoardsWithDetails);
     setLoading(false);
   };

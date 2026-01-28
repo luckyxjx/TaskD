@@ -83,21 +83,33 @@ export function Invitations({ onBack, onBoardClick }: InvitationsProps) {
   };
 
   const acceptInvitation = async (token: string, boardId: string) => {
+    console.log('🎯 Accepting invitation with token:', token);
+    
     const { data, error } = await supabase.rpc('accept_board_invitation', {
       invitation_token: token
     });
 
+    console.log('📊 Accept invitation response:', data);
+    console.log('❌ Accept invitation error:', error);
+
     if (error) {
       console.error('Error accepting invitation:', error);
-      alert('Failed to accept invitation');
+      alert(`Failed to accept invitation: ${error.message}`);
       return;
     }
 
     if (data?.success) {
+      console.log('✅ Invitation accepted successfully!');
+      console.log('   - Board ID:', data.board_id);
+      console.log('   - Member ID:', data.member_id);
+      console.log('   - Role:', data.role);
+      console.log('   - Was existing member:', data.was_existing_member);
+      
       alert('Invitation accepted! Redirecting to board...');
       setInvitations(invitations.filter(inv => inv.token !== token));
       onBoardClick(boardId);
     } else {
+      console.error('❌ Invitation acceptance failed:', data?.error);
       alert(data?.error || 'Failed to accept invitation');
     }
   };
