@@ -213,37 +213,24 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
   const createBoard = async () => {
     if (!selectedWorkspace || !newBoardName.trim()) return;
 
-    const { data, error } = await supabase
-      .from('boards')
-      .insert([{ name: newBoardName, workspace_id: selectedWorkspace }])
-      .select()
-      .single();
+    // Use RPC function to create board (handles workspace ownership check)
+    const { data: boardId, error } = await supabase.rpc('create_board_as_owner', {
+      p_workspace_id: selectedWorkspace,
+      p_board_name: newBoardName
+    });
 
     if (error) {
-      if (error.code === '23505') {
-        alert('A board with this name already exists in this workspace!');
-      } else {
-        console.error('Error creating board:', error);
-        alert('Failed to create board. Please try again.');
-      }
+      console.error('Error creating board:', error);
+      alert(error.message || 'Failed to create board. Please try again.');
       return;
     }
 
-    if (data) {
-      // Add current user as board owner
-      const { error: ownerError } = await supabase.rpc('add_user_as_board_owner', {
-        board_uuid: data.id
-      });
-
-      if (ownerError) {
-        console.error('Error adding board owner:', ownerError);
-      }
-
+    if (boardId) {
       // Create default lists for the new board
       const defaultLists = [
-        { name: 'To Do', board_id: data.id, position: 0 },
-        { name: 'In Progress', board_id: data.id, position: 1 },
-        { name: 'Done', board_id: data.id, position: 2 },
+        { name: 'To Do', board_id: boardId, position: 0 },
+        { name: 'In Progress', board_id: boardId, position: 1 },
+        { name: 'Done', board_id: boardId, position: 2 },
       ];
 
       const { error: listsError } = await supabase
@@ -254,7 +241,8 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
         console.error('Error creating default lists:', listsError);
       }
 
-      setBoards([data, ...boards]);
+      // Reload boards to show the new one
+      loadBoards(selectedWorkspace);
       setNewBoardName('');
       setShowNewBoardModal(false);
     }
@@ -297,13 +285,14 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
   const deleteBoard = async () => {
     if (!boardToDelete) return;
 
-    const { error } = await supabase
-      .from('boards')
-      .delete()
-      .eq('id', boardToDelete.id);
+    // Use RPC function to delete board (handles workspace ownership check)
+    const { error } = await supabase.rpc('delete_board_as_owner', {
+      p_board_id: boardToDelete.id
+    });
 
     if (error) {
       console.error('Error deleting board:', error);
+      alert(error.message || 'Failed to delete board');
       return;
     }
 
