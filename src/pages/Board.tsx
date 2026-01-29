@@ -314,15 +314,19 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     setSelectedCard(null);
   };
 
-  const handleDragStart = (card: Card) => {
+  const handleDragStart = (e: React.DragEvent, card: Card) => {
+    e.stopPropagation(); // Prevent event from bubbling to list
     setDraggedCard(card);
+    setDraggedList(null); // Clear any list drag state
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
-  const handleDrop = async (targetListId: string) => {
+  const handleDrop = async (e: React.DragEvent, targetListId: string) => {
+    e.stopPropagation(); // Prevent event from bubbling to list
+    
     if (!draggedCard || draggedCard.list_id === targetListId) {
       setDraggedCard(null);
       return;
@@ -368,15 +372,19 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     setDraggedCard(null);
   };
 
-  const handleListDragStart = (list: List) => {
+  const handleListDragStart = (e: React.DragEvent, list: List) => {
+    e.stopPropagation(); // Prevent interference with card drag
     setDraggedList(list);
+    setDraggedCard(null); // Clear any card drag state
   };
 
   const handleListDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
-  const handleListDrop = async (targetList: List) => {
+  const handleListDrop = async (e: React.DragEvent, targetList: List) => {
+    e.stopPropagation(); // Prevent interference with card drop
+    
     if (!draggedList || draggedList.id === targetList.id) {
       setDraggedList(null);
       return;
@@ -580,9 +588,9 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             <div
               key={list.id}
               draggable
-              onDragStart={() => handleListDragStart(list)}
+              onDragStart={(e) => handleListDragStart(e, list)}
               onDragOver={handleListDragOver}
-              onDrop={() => handleListDrop(list)}
+              onDrop={(e) => handleListDrop(e, list)}
               className="glass rounded-2xl p-4 w-80 flex flex-col flex-shrink-0 animate-fade-in-up bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 cursor-move"
               style={{ animationDelay: `${index * 50}ms` }}
             >
@@ -615,13 +623,13 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
               <div 
                 className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-1"
                 onDragOver={handleDragOver}
-                onDrop={() => handleDrop(list.id)}
+                onDrop={(e) => handleDrop(e, list.id)}
               >
                 {getListCards(list.id).map((card, cardIndex) => (
                   <div
                     key={card.id}
                     draggable
-                    onDragStart={() => handleDragStart(card)}
+                    onDragStart={(e) => handleDragStart(e, card)}
                     onClick={() => openCardModal(card)}
                     className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-lg hover:border-primary-300 dark:hover:border-primary-600 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group animate-fade-in"
                     style={{ animationDelay: `${cardIndex * 30}ms` }}
