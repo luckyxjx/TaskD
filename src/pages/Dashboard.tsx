@@ -38,6 +38,7 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
   const [boardStats, setBoardStats] = useState<BoardStats>({});
+  const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,6 +63,31 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
 
   useEffect(() => {
     loadWorkspaces();
+    if (user) {
+      loadPendingInvitations();
+      
+      // Subscribe to real-time invitation changes
+      const invitationsSubscription = supabase
+        .channel('user-invitations')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'board_invitations',
+            filter: `email=eq.${user.email}`
+          },
+          (payload) => {
+            console.log('Invitation change detected:', payload);
+            loadPendingInvitations();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        invitationsSubscription.unsubscribe();
+      };
+    }
   }, [user]);
 
   useEffect(() => {
@@ -160,6 +186,23 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
     }
 
     setBoards(ownedBoards || []);
+  };
+
+  const loadPendingInvitations = async () => {
+    if (!user?.email) return;
+
+    const { count, error } = await supabase
+      .from('board_invitations')
+      .select('*', { count: 'exact', head: true })
+      .eq('email', user.email)
+      .eq('accepted', false);
+
+    if (error) {
+      console.error('Error loading pending invitations:', error);
+      return;
+    }
+
+    setPendingInvitationsCount(count || 0);
   };
 
   const loadBoardStats = async () => {
@@ -509,7 +552,7 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
           <div className="flex items-center justify-between">
             <div className="flex-1 max-w-md">
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5 z-10 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search boards..."
@@ -523,12 +566,17 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
               {onInvitationsClick && (
                 <button
                   onClick={onInvitationsClick}
-                  className="p-3 rounded-xl bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all duration-200"
+                  className="relative p-3 rounded-xl bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all duration-200"
                   title="View invitations"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
+                  {pendingInvitationsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-danger-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse-slow">
+                      {pendingInvitationsCount > 9 ? '9+' : pendingInvitationsCount}
+                    </span>
+                  )}
                 </button>
               )}
               <button

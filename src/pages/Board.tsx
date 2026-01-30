@@ -591,7 +591,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             </div>
           </div>
           <div className="relative max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5 z-10 pointer-events-none" />
             <input
               type="text"
               placeholder="Search cards..."
