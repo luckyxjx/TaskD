@@ -71,7 +71,8 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           table: 'lists',
           filter: `board_id=eq.${boardId}`
         },
-        () => {
+        (payload) => {
+          console.log('List change detected:', payload);
           loadBoardData();
         }
       )
@@ -87,8 +88,29 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           schema: 'public',
           table: 'cards'
         },
-        () => {
+        (payload) => {
+          console.log('Card change detected:', payload);
           loadBoardData();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to board changes (for name updates)
+    const boardSubscription = supabase
+      .channel(`board:${boardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'boards',
+          filter: `id=eq.${boardId}`
+        },
+        (payload) => {
+          console.log('Board change detected:', payload);
+          if (payload.new && 'name' in payload.new) {
+            setBoardName(payload.new.name as string);
+          }
         }
       )
       .subscribe();
@@ -96,6 +118,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     return () => {
       listsSubscription.unsubscribe();
       cardsSubscription.unsubscribe();
+      boardSubscription.unsubscribe();
     };
   }, [boardId]);
 

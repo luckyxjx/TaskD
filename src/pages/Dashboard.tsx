@@ -67,6 +67,28 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
   useEffect(() => {
     if (selectedWorkspace) {
       loadBoards(selectedWorkspace);
+      
+      // Subscribe to real-time board changes for this workspace
+      const boardsSubscription = supabase
+        .channel(`boards:${selectedWorkspace}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'boards',
+            filter: `workspace_id=eq.${selectedWorkspace}`
+          },
+          (payload) => {
+            console.log('Board change detected:', payload);
+            loadBoards(selectedWorkspace);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        boardsSubscription.unsubscribe();
+      };
     }
   }, [selectedWorkspace]);
 
