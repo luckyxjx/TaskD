@@ -74,11 +74,32 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
           {
             event: '*',
             schema: 'public',
-            table: 'board_invitations',
-            filter: `email=eq.${user.email}`
+            table: 'board_invitations'
           },
           (payload) => {
             console.log('Invitation change detected:', payload);
+            // Check if this invitation is for the current user
+            const invitation: any = payload.new || payload.old;
+            if (invitation && invitation.email === user.email) {
+              loadPendingInvitations();
+            }
+          }
+        )
+        .subscribe();
+
+      // Also subscribe to board_members changes (for when invitations are accepted)
+      const membersSubscription = supabase
+        .channel('user-board-members')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'board_members',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Board member change detected:', payload);
             loadPendingInvitations();
           }
         )
@@ -86,6 +107,7 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
 
       return () => {
         invitationsSubscription.unsubscribe();
+        membersSubscription.unsubscribe();
       };
     }
   }, [user]);
