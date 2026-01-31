@@ -193,12 +193,8 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
       if (!selectedWorkspace) {
         setSelectedWorkspace(data[0].id);
       }
-    } else {
-      // Only show modal if we don't have any workspaces AND modal isn't already shown
-      if (!showNewWorkspaceModal) {
-        setShowNewWorkspaceModal(true);
-      }
     }
+    // Don't show modal here - let the user click "New Workspace" button if they want to create one
   };
 
   const loadBoards = async (workspaceId: string) => {
@@ -445,12 +441,12 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
     const remainingWorkspaces = workspaces.filter(w => w.id !== workspaceToDelete.id);
     setWorkspaces(remainingWorkspaces);
     
-    // Select first remaining workspace or show create modal
+    // Select first remaining workspace, don't show modal
     if (remainingWorkspaces.length > 0) {
       setSelectedWorkspace(remainingWorkspaces[0].id);
     } else {
       setSelectedWorkspace(null);
-      setShowNewWorkspaceModal(true);
+      setBoards([]);
     }
     
     setShowDeleteWorkspaceModal(false);
@@ -621,6 +617,42 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
         {/* Content */}
         <div className="flex-1 p-6 overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto">
+            {workspaces.length === 0 ? (
+              <div className="text-center py-20 animate-fade-in-up">
+                <div className="relative inline-block mb-6">
+                  <div className="w-24 h-24 rounded-2xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center">
+                    <LayoutGrid className="w-12 h-12 text-primary-600 dark:text-primary-400" />
+                  </div>
+                  <div className="absolute -top-2 -right-2">
+                    <Sparkles className="w-8 h-8 text-accent-500 dark:text-accent-400 animate-bounce-subtle" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">No workspaces yet</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
+                  Create your first workspace to organize your boards and projects
+                </p>
+                <Button
+                  onClick={() => setShowNewWorkspaceModal(true)}
+                  variant="primary"
+                  icon={Plus}
+                >
+                  Create Your First Workspace
+                </Button>
+              </div>
+            ) : !selectedWorkspace ? (
+              <div className="text-center py-20 animate-fade-in-up">
+                <div className="relative inline-block mb-6">
+                  <div className="w-24 h-24 rounded-2xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center">
+                    <LayoutGrid className="w-12 h-12 text-primary-600 dark:text-primary-400" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Select a workspace</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
+                  Choose a workspace from the sidebar to view its boards
+                </p>
+              </div>
+            ) : (
+              <>
             <div className="flex items-center justify-between mb-8 animate-fade-in-down">
               <div>
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
@@ -727,6 +759,8 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
                   );
                 })}
               </div>
+            )}
+            </>
             )}
           </div>
         </div>
