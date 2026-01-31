@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { LayoutGrid, Plus, User, Users, Crown } from 'lucide-react';
+import { LayoutGrid, Plus, User, Users, Crown, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -17,20 +17,31 @@ interface Workspace {
   member_count?: number;
 }
 
+interface SharedBoard {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name?: string;
+}
+
 interface WorkspacesProps {
   onWorkspaceClick: (workspaceId: string) => void;
+  onBoardClick?: (boardId: string) => void;
   onProfileClick: () => void;
   onInvitationsClick?: () => void;
 }
 
-export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClick }: WorkspacesProps) {
+export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onInvitationsClick }: WorkspacesProps) {
   const { user } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [sharedBoards, setSharedBoards] = useState<SharedBoard[]>([]);
   const [showNewWorkspaceModal, setShowNewWorkspaceModal] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [loading, setLoading] = useState(true);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'my' | 'shared'>('my');
+  const [sharedSubTab, setSharedSubTab] = useState<'workspaces' | 'boards'>('workspaces');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -42,6 +53,7 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
   useEffect(() => {
     if (user) {
       loadWorkspaces();
+      loadSharedBoards();
       loadPendingInvitations();
 
       // Real-time subscription for board invitations
@@ -175,6 +187,60 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
     }
 
     setPendingInvitationsCount((boardCount || 0) + (workspaceCount || 0));
+  };
+
+  const loadSharedBoards = async () => {
+    if (!user) return;
+
+    // Get boards where user is a member but not the owner
+    const { data: memberBoards, error: memberError } = await supabase
+      .from('board_members')
+      .select('board_id')
+      .eq('user_id', user.id);
+
+    if (memberError) {
+      console.error('Error loading board memberships:', memberError);
+      return;
+    }
+
+    const boardIds = memberBoards?.map(m => m.board_id) || [];
+
+    if (boardIds.length === 0) {
+      setSharedBoards([]);
+      return;
+    }
+
+    // Get board details
+    const { data: boardsData, error: boardsError } = await supabase
+      .from('boards')
+      .select('id, name, workspace_id, created_by')
+      .in('id', boardIds)
+      .neq('created_by', user.id); // Only boards not created by current user
+
+    if (boardsError) {
+      console.error('Error loading shared boards:', boardsError);
+      return;
+    }
+
+    // Get workspace names for each board
+    const boardsWithWorkspace = await Promise.all(
+      (boardsData || []).map(async (board) => {
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('name')
+          .eq('id', board.workspace_id)
+          .single();
+
+        return {
+          id: board.id,
+          name: board.name,
+          workspace_id: board.workspace_id,
+          workspace_name: workspace?.name || 'Unknown Workspace'
+        };
+      })
+    );
+
+    setSharedBoards(boardsWithWorkspace);
   };
 
   const renameWorkspace = async () => {
@@ -351,20 +417,70 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
                 My Workspaces ({workspaces.filter(w => w.owner_id === user?.id).length})
               </button>
               <button
-                onClick={() => setActiveTab('shared')}
+                onClick={() => {
+                  setActiveTab('shared');
+                  setSearchQuery('');
+                }}
                 className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
                   activeTab === 'shared'
                     ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
-                Shared with Me ({workspaces.filter(w => w.owner_id !== user?.id).length})
+                Shared with Me ({workspaces.filter(w => w.owner_id !== user?.id).length + sharedBoards.length})
               </button>
             </div>
 
+            {/* Shared Sub-tabs and Search */}
+            {activeTab === 'shared' && (
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      setSharedSubTab('workspaces');
+                      setSearchQuery('');
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                      sharedSubTab === 'workspaces'
+                        ? 'bg-white dark:bg-gray-800 text-accent-700 dark:text-accent-400 shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-gray-800/50'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Workspaces ({workspaces.filter(w => w.owner_id !== user?.id).length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSharedSubTab('boards');
+                      setSearchQuery('');
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                      sharedSubTab === 'boards'
+                        ? 'bg-white dark:bg-gray-800 text-accent-700 dark:text-accent-400 shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-gray-800/50'
+                    }`}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    Boards ({sharedBoards.length})
+                  </button>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder={`Search ${sharedSubTab === 'workspaces' ? 'workspaces' : 'boards'}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-transparent outline-none transition-all duration-200 w-64 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {activeTab === 'my' ? 'My Workspaces' : 'Shared with Me'}
+                {activeTab === 'my' ? 'My Workspaces' : 
+                  sharedSubTab === 'workspaces' ? 'Shared Workspaces' : 'Shared Boards'}
               </h2>
               {activeTab === 'my' && (
                 <Button
@@ -377,29 +493,25 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {workspaces
-                .filter(w => activeTab === 'my' ? w.owner_id === user?.id : w.owner_id !== user?.id)
-                .length === 0 ? (
-                <div className="col-span-full text-center py-20">
-                  <div className="relative inline-block mb-6">
-                    <div className="w-24 h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                      <Users className="w-12 h-12 text-gray-400" />
+            {/* My Workspaces Grid */}
+            {activeTab === 'my' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {workspaces.filter(w => w.owner_id === user?.id).length === 0 ? (
+                  <div className="col-span-full text-center py-20">
+                    <div className="relative inline-block mb-6">
+                      <div className="w-24 h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                        <Users className="w-12 h-12 text-gray-400" />
+                      </div>
                     </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No workspaces yet</h3>
+                    <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                      Create your first workspace to get started
+                    </p>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                    {activeTab === 'my' ? 'No workspaces yet' : 'No shared workspaces'}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-                    {activeTab === 'my' 
-                      ? 'Create your first workspace to get started'
-                      : 'Workspaces shared with you will appear here'}
-                  </p>
-                </div>
-              ) : (
-                workspaces
-                  .filter(w => activeTab === 'my' ? w.owner_id === user?.id : w.owner_id !== user?.id)
-                  .map((workspace, index) => (
+                ) : (
+                  workspaces
+                    .filter(w => w.owner_id === user?.id)
+                    .map((workspace, index) => (
                 <Card
                   key={workspace.id}
                   interactive
@@ -486,6 +598,119 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
                 </Card>
               )))}
             </div>
+            )}
+
+            {/* Shared Workspaces Grid */}
+            {activeTab === 'shared' && sharedSubTab === 'workspaces' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {workspaces
+                  .filter(w => w.owner_id !== user?.id)
+                  .filter(w => w.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .length === 0 ? (
+                  <div className="col-span-full text-center py-20">
+                    <div className="relative inline-block mb-6">
+                      <div className="w-24 h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                        <Users className="w-12 h-12 text-gray-400" />
+                      </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                      {searchQuery ? 'No workspaces found' : 'No shared workspaces'}
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                      {searchQuery 
+                        ? 'Try a different search term'
+                        : 'Workspaces shared with you will appear here'}
+                    </p>
+                  </div>
+                ) : (
+                  workspaces
+                    .filter(w => w.owner_id !== user?.id)
+                    .filter(w => w.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map((workspace, index) => (
+                      <Card
+                        key={workspace.id}
+                        interactive
+                        onClick={() => onWorkspaceClick(workspace.id)}
+                        className="group"
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        <div className="flex flex-col h-full">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
+                              <LayoutGrid className="w-6 h-6 text-white" />
+                            </div>
+                          </div>
+
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                            {workspace.name}
+                          </h3>
+
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mt-auto">
+                            <Users className="w-4 h-4" />
+                            <span>
+                              {workspace.member_count === 1 ? 'Just you' : `${workspace.member_count} members`}
+                            </span>
+                          </div>
+                        </div>
+                      </Card>
+                    ))
+                )}
+              </div>
+            )}
+
+            {/* Shared Boards Grid */}
+            {activeTab === 'shared' && sharedSubTab === 'boards' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {sharedBoards
+                  .filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .length === 0 ? (
+                  <div className="col-span-full text-center py-20">
+                    <div className="relative inline-block mb-6">
+                      <div className="w-24 h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                        <LayoutGrid className="w-12 h-12 text-gray-400" />
+                      </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                      {searchQuery ? 'No boards found' : 'No shared boards'}
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                      {searchQuery 
+                        ? 'Try a different search term'
+                        : 'Boards shared with you will appear here'}
+                    </p>
+                  </div>
+                ) : (
+                  sharedBoards
+                    .filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map((board, index) => (
+                      <Card
+                        key={board.id}
+                        interactive
+                        onClick={() => onBoardClick?.(board.id)}
+                        className="group"
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        <div className="flex flex-col h-full">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="w-12 h-12 rounded-xl bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
+                              <LayoutGrid className="w-6 h-6 text-accent-600 dark:text-accent-400" />
+                            </div>
+                          </div>
+
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">
+                            {board.name}
+                          </h3>
+
+                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-auto">
+                            <Users className="w-3 h-3" />
+                            <span>{board.workspace_name}</span>
+                          </div>
+                        </div>
+                      </Card>
+                    ))
+                )}
+              </div>
+            )}
           </>
         )}
       </main>

@@ -47,6 +47,10 @@ function App() {
           setSelectedWorkspaceId(workspaceId);
           setCurrentView('workspace-boards');
         }}
+        onBoardClick={(boardId) => {
+          setSelectedBoardId(boardId);
+          setCurrentView('board');
+        }}
         onProfileClick={() => setCurrentView('profile')}
         onInvitationsClick={() => setCurrentView('invitations')}
       />
@@ -117,6 +121,10 @@ function App() {
       onWorkspaceClick={(workspaceId) => {
         setSelectedWorkspaceId(workspaceId);
         setCurrentView('workspace-boards');
+      }}
+      onBoardClick={(boardId) => {
+        setSelectedBoardId(boardId);
+        setCurrentView('board');
       }}
       onProfileClick={() => setCurrentView('profile')}
       onInvitationsClick={() => setCurrentView('invitations')}
