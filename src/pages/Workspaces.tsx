@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { LayoutGrid, Plus, User, Users } from 'lucide-react';
+import { LayoutGrid, Plus, User, Users, Share2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { ShareWorkspaceModal } from '../components/ShareWorkspaceModal';
 
 interface Workspace {
   id: string;
@@ -28,6 +29,9 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [loading, setLoading] = useState(true);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<'my' | 'shared'>('my');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -244,21 +248,68 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
           </div>
         ) : (
           <>
+            {/* Tabs */}
+            <div className="flex items-center gap-4 mb-8">
+              <button
+                onClick={() => setActiveTab('my')}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                  activeTab === 'my'
+                    ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                My Workspaces ({workspaces.filter(w => w.owner_id === user?.id).length})
+              </button>
+              <button
+                onClick={() => setActiveTab('shared')}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                  activeTab === 'shared'
+                    ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                Shared with Me ({workspaces.filter(w => w.owner_id !== user?.id).length})
+              </button>
+            </div>
+
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                All Workspaces ({workspaces.length})
+                {activeTab === 'my' ? 'My Workspaces' : 'Shared with Me'}
               </h2>
-              <Button
-                onClick={() => setShowNewWorkspaceModal(true)}
-                variant="primary"
-                icon={Plus}
-              >
-                New Workspace
-              </Button>
+              {activeTab === 'my' && (
+                <Button
+                  onClick={() => setShowNewWorkspaceModal(true)}
+                  variant="primary"
+                  icon={Plus}
+                >
+                  New Workspace
+                </Button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {workspaces.map((workspace, index) => (
+              {workspaces
+                .filter(w => activeTab === 'my' ? w.owner_id === user?.id : w.owner_id !== user?.id)
+                .length === 0 ? (
+                <div className="col-span-full text-center py-20">
+                  <div className="relative inline-block mb-6">
+                    <div className="w-24 h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                      <Users className="w-12 h-12 text-gray-400" />
+                    </div>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                    {activeTab === 'my' ? 'No workspaces yet' : 'No shared workspaces'}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                    {activeTab === 'my' 
+                      ? 'Create your first workspace to get started'
+                      : 'Workspaces shared with you will appear here'}
+                  </p>
+                </div>
+              ) : (
+                workspaces
+                  .filter(w => activeTab === 'my' ? w.owner_id === user?.id : w.owner_id !== user?.id)
+                  .map((workspace, index) => (
                 <Card
                   key={workspace.id}
                   interactive
@@ -271,11 +322,26 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
                         <LayoutGrid className="w-6 h-6 text-white" />
                       </div>
-                      {workspace.owner_id === user?.id && (
-                        <span className="px-2 py-1 rounded-lg text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400">
-                          Owner
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {workspace.owner_id === user?.id && (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedWorkspace(workspace);
+                                setShowShareModal(true);
+                              }}
+                              className="p-2 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/30 text-primary-600 dark:text-primary-400 transition-all"
+                              title="Share workspace"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
+                            <span className="px-2 py-1 rounded-lg text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400">
+                              Owner
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
@@ -290,7 +356,7 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
                     </div>
                   </div>
                 </Card>
-              ))}
+              )))}
             </div>
           </>
         )}
@@ -325,6 +391,19 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
           </div>
         </div>
       </Modal>
+
+      {/* Share Workspace Modal */}
+      {selectedWorkspace && (
+        <ShareWorkspaceModal
+          isOpen={showShareModal}
+          onClose={() => {
+            setShowShareModal(false);
+            setSelectedWorkspace(null);
+          }}
+          workspaceId={selectedWorkspace.id}
+          workspaceName={selectedWorkspace.name}
+        />
+      )}
     </div>
   );
 }

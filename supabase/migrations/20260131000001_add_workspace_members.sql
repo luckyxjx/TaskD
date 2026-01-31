@@ -16,29 +16,30 @@ CREATE INDEX idx_workspace_members_user ON workspace_members(user_id);
 ALTER TABLE workspace_members ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for workspace_members
-CREATE POLICY "Users can view workspace members if they are members"
+-- Simple policy: users can see their own memberships
+CREATE POLICY "Users can view their own workspace memberships"
   ON workspace_members FOR SELECT
-  USING (
-    workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
-    )
-  );
+  USING (user_id = auth.uid());
 
+-- Workspace owners can add members (check ownership via workspaces table)
 CREATE POLICY "Workspace owners can add members"
   ON workspace_members FOR INSERT
   WITH CHECK (
-    workspace_id IN (
-      SELECT workspace_id FROM workspace_members 
-      WHERE user_id = auth.uid() AND role = 'owner'
+    EXISTS (
+      SELECT 1 FROM workspaces 
+      WHERE workspaces.id = workspace_members.workspace_id 
+      AND workspaces.owner_id = auth.uid()
     )
   );
 
+-- Workspace owners can remove members (check ownership via workspaces table)
 CREATE POLICY "Workspace owners can remove members"
   ON workspace_members FOR DELETE
   USING (
-    workspace_id IN (
-      SELECT workspace_id FROM workspace_members 
-      WHERE user_id = auth.uid() AND role = 'owner'
+    EXISTS (
+      SELECT 1 FROM workspaces 
+      WHERE workspaces.id = workspace_members.workspace_id 
+      AND workspaces.owner_id = auth.uid()
     )
   );
 

@@ -68,15 +68,18 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
       const normalizedEmail = email.trim().toLowerCase();
       
       // Check if invitation already exists for this email
-      const { data: existingInvitation } = await supabase
+      const { data: existingInvitations, error: inviteCheckError } = await supabase
         .from('board_invitations')
         .select('id')
         .eq('board_id', boardId)
         .eq('email', normalizedEmail)
-        .eq('accepted', false)
-        .single();
+        .eq('accepted', false);
 
-      if (existingInvitation) {
+      if (inviteCheckError) {
+        console.error('Error checking invitations:', inviteCheckError);
+      }
+
+      if (existingInvitations && existingInvitations.length > 0) {
         alert('An invitation has already been sent to this email!');
         setLoading(false);
         return;
@@ -88,14 +91,17 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
       });
 
       if (userData) {
-        const { data: existingMember } = await supabase
+        const { data: existingMembers, error: memberCheckError } = await supabase
           .from('board_members')
           .select('id')
           .eq('board_id', boardId)
-          .eq('user_id', userData)
-          .single();
+          .eq('user_id', userData);
 
-        if (existingMember) {
+        if (memberCheckError) {
+          console.error('Error checking members:', memberCheckError);
+        }
+
+        if (existingMembers && existingMembers.length > 0) {
           alert('This user is already a member of this board!');
           setLoading(false);
           return;
