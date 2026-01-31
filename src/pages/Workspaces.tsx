@@ -195,8 +195,9 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
     // Get boards where user is a member but not the owner
     const { data: memberBoards, error: memberError } = await supabase
       .from('board_members')
-      .select('board_id')
-      .eq('user_id', user.id);
+      .select('board_id, role')
+      .eq('user_id', user.id)
+      .neq('role', 'owner'); // Only boards where user is NOT the owner
 
     if (memberError) {
       console.error('Error loading board memberships:', memberError);
@@ -213,9 +214,8 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
     // Get board details
     const { data: boardsData, error: boardsError } = await supabase
       .from('boards')
-      .select('id, name, workspace_id, created_by')
-      .in('id', boardIds)
-      .neq('created_by', user.id); // Only boards not created by current user
+      .select('id, name, workspace_id')
+      .in('id', boardIds);
 
     if (boardsError) {
       console.error('Error loading shared boards:', boardsError);
