@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
@@ -9,13 +9,41 @@ import { Profile } from './pages/Profile';
 import { Invitations } from './pages/Invitations';
 import { SharedBoards } from './pages/SharedBoards';
 
-type View = 'login' | 'signup' | 'workspaces' | 'workspace-boards' | 'board' | 'profile' | 'invitations' | 'shared';
+function WorkspaceBoardsWrapper() {
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  const navigate = useNavigate();
 
-function App() {
+  if (!workspaceId) return <Navigate to="/workspaces" replace />;
+
+  return (
+    <WorkspaceBoards
+      workspaceId={workspaceId}
+      onBoardClick={(boardId) => navigate(`/board/${boardId}`)}
+      onBack={() => navigate('/workspaces')}
+      onProfileClick={() => navigate('/profile')}
+      onInvitationsClick={() => navigate('/invitations')}
+    />
+  );
+}
+
+function BoardWrapper() {
+  const { boardId } = useParams<{ boardId: string }>();
+  const navigate = useNavigate();
+
+  if (!boardId) return <Navigate to="/workspaces" replace />;
+
+  return (
+    <Board
+      boardId={boardId}
+      onBack={() => navigate(-1)}
+      onProfileClick={() => navigate('/profile')}
+    />
+  );
+}
+
+function AppContent() {
   const { user, loading } = useAuth();
-  const [currentView, setCurrentView] = useState<View>('login');
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   if (loading) {
     return (
@@ -29,106 +57,53 @@ function App() {
   }
 
   if (!user) {
-    if (currentView === 'signup') {
-      return (
-        <SignUp
-          onSwitchToLogin={() => setCurrentView('login')}
-          onSignUpSuccess={() => setCurrentView('workspaces')}
-        />
-      );
-    }
-    return <Login onSwitchToSignUp={() => setCurrentView('signup')} />;
-  }
-
-  if (currentView === 'workspaces') {
     return (
-      <Workspaces
-        onWorkspaceClick={(workspaceId) => {
-          setSelectedWorkspaceId(workspaceId);
-          setCurrentView('workspace-boards');
-        }}
-        onBoardClick={(boardId) => {
-          setSelectedBoardId(boardId);
-          setCurrentView('board');
-        }}
-        onProfileClick={() => setCurrentView('profile')}
-        onInvitationsClick={() => setCurrentView('invitations')}
-      />
+      <Routes>
+        <Route path="/signup" element={<SignUp onSwitchToLogin={() => navigate('/login')} onSignUpSuccess={() => navigate('/workspaces')} />} />
+        <Route path="/login" element={<Login onSwitchToSignUp={() => navigate('/signup')} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
     );
   }
 
-  if (currentView === 'profile') {
-    return <Profile onBack={() => setCurrentView('workspaces')} />;
-  }
-
-  if (currentView === 'invitations') {
-    return (
-      <Invitations
-        onBack={() => setCurrentView('workspaces')}
-        onBoardClick={(boardId) => {
-          setSelectedBoardId(boardId);
-          setCurrentView('board');
-        }}
-        onWorkspaceClick={(workspaceId) => {
-          setSelectedWorkspaceId(workspaceId);
-          setCurrentView('workspace-boards');
-        }}
-      />
-    );
-  }
-
-  if (currentView === 'shared') {
-    return (
-      <SharedBoards
-        onBack={() => setCurrentView('workspaces')}
-        onBoardClick={(boardId) => {
-          setSelectedBoardId(boardId);
-          setCurrentView('board');
-        }}
-        onProfileClick={() => setCurrentView('profile')}
-      />
-    );
-  }
-
-  if (currentView === 'board' && selectedBoardId) {
-    return (
-      <Board
-        boardId={selectedBoardId}
-        onBack={() => setCurrentView('workspace-boards')}
-        onProfileClick={() => setCurrentView('profile')}
-      />
-    );
-  }
-
-  if (currentView === 'workspace-boards' && selectedWorkspaceId) {
-    return (
-      <WorkspaceBoards
-        workspaceId={selectedWorkspaceId}
-        onBoardClick={(boardId) => {
-          setSelectedBoardId(boardId);
-          setCurrentView('board');
-        }}
-        onBack={() => setCurrentView('workspaces')}
-        onProfileClick={() => setCurrentView('profile')}
-        onInvitationsClick={() => setCurrentView('invitations')}
-      />
-    );
-  }
-
-  // Default: show workspaces
   return (
-    <Workspaces
-      onWorkspaceClick={(workspaceId) => {
-        setSelectedWorkspaceId(workspaceId);
-        setCurrentView('workspace-boards');
-      }}
-      onBoardClick={(boardId) => {
-        setSelectedBoardId(boardId);
-        setCurrentView('board');
-      }}
-      onProfileClick={() => setCurrentView('profile')}
-      onInvitationsClick={() => setCurrentView('invitations')}
-    />
+    <Routes>
+      <Route path="/workspaces" element={
+        <Workspaces
+          onWorkspaceClick={(workspaceId) => navigate(`/workspace/${workspaceId}`)}
+          onBoardClick={(boardId) => navigate(`/board/${boardId}`)}
+          onProfileClick={() => navigate('/profile')}
+          onInvitationsClick={() => navigate('/invitations')}
+        />
+      } />
+      <Route path="/workspace/:workspaceId" element={<WorkspaceBoardsWrapper />} />
+      <Route path="/board/:boardId" element={<BoardWrapper />} />
+      <Route path="/profile" element={<Profile onBack={() => navigate('/workspaces')} />} />
+      <Route path="/invitations" element={
+        <Invitations
+          onBack={() => navigate('/workspaces')}
+          onBoardClick={(boardId) => navigate(`/board/${boardId}`)}
+          onWorkspaceClick={(workspaceId) => navigate(`/workspace/${workspaceId}`)}
+        />
+      } />
+      <Route path="/shared" element={
+        <SharedBoards
+          onBack={() => navigate('/workspaces')}
+          onBoardClick={(boardId) => navigate(`/board/${boardId}`)}
+          onProfileClick={() => navigate('/profile')}
+        />
+      } />
+      <Route path="/" element={<Navigate to="/workspaces" replace />} />
+      <Route path="*" element={<Navigate to="/workspaces" replace />} />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 
