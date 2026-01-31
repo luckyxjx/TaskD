@@ -186,11 +186,18 @@ export function Dashboard({ onBoardClick, onProfileClick, onInvitationsClick, on
       return;
     }
 
+    setWorkspaces(data || []);
+    
     if (data && data.length > 0) {
-      setWorkspaces(data);
-      setSelectedWorkspace(data[0].id);
+      // Only set selected workspace if not already set
+      if (!selectedWorkspace) {
+        setSelectedWorkspace(data[0].id);
+      }
     } else {
-      setShowNewWorkspaceModal(true);
+      // Only show modal if we don't have any workspaces AND modal isn't already shown
+      if (!showNewWorkspaceModal) {
+        setShowNewWorkspaceModal(true);
+      }
     }
   };
 

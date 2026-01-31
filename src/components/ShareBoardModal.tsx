@@ -65,18 +65,56 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
 
     setLoading(true);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      
+      // Check if invitation already exists for this email
+      const { data: existingInvitation } = await supabase
+        .from('board_invitations')
+        .select('id')
+        .eq('board_id', boardId)
+        .eq('email', normalizedEmail)
+        .eq('accepted', false)
+        .single();
+
+      if (existingInvitation) {
+        alert('An invitation has already been sent to this email!');
+        setLoading(false);
+        return;
+      }
+
+      // Check if user is already a member
+      const { data: userData } = await supabase.rpc('get_user_by_email', {
+        user_email: normalizedEmail
+      });
+
+      if (userData) {
+        const { data: existingMember } = await supabase
+          .from('board_members')
+          .select('id')
+          .eq('board_id', boardId)
+          .eq('user_id', userData)
+          .single();
+
+        if (existingMember) {
+          alert('This user is already a member of this board!');
+          setLoading(false);
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('board_invitations')
         .insert([{
           board_id: boardId,
-          email: email.trim().toLowerCase(),
+          email: normalizedEmail,
           role,
-          invited_by: (await supabase.auth.getUser()).data.user?.id
+          invited_by: (await supabase.auth.getUser()).data.user?.id,
+          token: crypto.randomUUID(),
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
         }]);
 
       if (error) throw error;
 
-      // TODO: Send email notification
       alert(`Invitation sent to ${email}!`);
       setEmail('');
     } catch (error: any) {
@@ -87,7 +125,13 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
     }
   };
 
-  const removeMember = async (memberId: string) => {
+  const removeMember = async (memberId: string, memberRole: string) => {
+    // Prevent removing owner
+    if (memberRole === 'owner') {
+      alert('Cannot remove the board owner!');
+      return;
+    }
+
     if (!confirm('Remove this member from the board?')) return;
 
     const { error } = await supabase
@@ -104,7 +148,23 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
     setMembers(members.filter(m => m.id !== memberId));
   };
 
-  const changeRole = async (memberId: string, newRole: 'editor' | 'viewer') => {
+  const changeRole = async (memberId: string, memberRole: string, newRole: 'editor' | 'viewer') => {
+    // Prevent changing owner role
+    if (memberRole === 'owner') {
+      alert('Cannot change the owner role!');
+      return;
+    }
+
+    // Check if current user is owner
+    const currentUser = (await supabase.auth.getUser()).data.user;
+    if (!currentUser) return;
+
+    const currentUserMembership = members.find(m => m.user_id === currentUser.id);
+    if (!currentUserMembership || currentUserMembership.role !== 'owner') {
+      alert('Only the board owner can change member roles!');
+      return;
+    }
+
     const { error } = await supabase
       .from('board_members')
       .update({ role: newRole })
@@ -276,7 +336,7 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
                         ) : (
                           <select
                             value={member.role}
-                            onChange={(e) => changeRole(member.id, e.target.value as 'editor' | 'viewer')}
+                            onChange={(e) => changeRole(member.id, member.role, e.target.value as 'editor' | 'viewer')}
                             className="px-2 py-1 rounded-lg text-xs font-medium border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                           >
                             <option value="editor">Editor</option>
@@ -285,7 +345,7 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
                         )}
                         {member.role !== 'owner' && (
                           <button
-                            onClick={() => removeMember(member.id)}
+                            onClick={() => removeMember(member.id, member.role)}
                             className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                             title="Remove member"
                           >
