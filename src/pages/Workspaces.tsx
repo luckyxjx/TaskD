@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { LayoutGrid, Plus, User, Users, Share2 } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { LayoutGrid, Plus, User, Users, Crown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { ShareWorkspaceModal } from '../components/ShareWorkspaceModal';
+import { MoreVerticalIcon, EditIcon, TrashIcon, ShareIcon } from '../icons';
 
 interface Workspace {
   id: string;
@@ -32,6 +33,11 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
   const [activeTab, setActiveTab] = useState<'my' | 'shared'>('my');
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [renameWorkspaceName, setRenameWorkspaceName] = useState('');
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -58,6 +64,17 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
       };
     }
   }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadWorkspaces = async () => {
     if (!user) return;
@@ -131,6 +148,52 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
     }
 
     setPendingInvitationsCount(count || 0);
+  };
+
+  const renameWorkspace = async () => {
+    if (!selectedWorkspace || !renameWorkspaceName.trim()) return;
+
+    const { error } = await supabase
+      .from('workspaces')
+      .update({ name: renameWorkspaceName })
+      .eq('id', selectedWorkspace.id);
+
+    if (error) {
+      console.error('Error renaming workspace:', error);
+      alert('Failed to rename workspace');
+      return;
+    }
+
+    setWorkspaces(workspaces.map(w => 
+      w.id === selectedWorkspace.id ? { ...w, name: renameWorkspaceName } : w
+    ));
+    setShowRenameModal(false);
+    setSelectedWorkspace(null);
+    setRenameWorkspaceName('');
+  };
+
+  const deleteWorkspace = async () => {
+    if (!selectedWorkspace) return;
+
+    const { error } = await supabase
+      .from('workspaces')
+      .delete()
+      .eq('id', selectedWorkspace.id);
+
+    if (error) {
+      console.error('Error deleting workspace:', error);
+      alert('Failed to delete workspace');
+      return;
+    }
+
+    setWorkspaces(workspaces.filter(w => w.id !== selectedWorkspace.id));
+    setShowDeleteModal(false);
+    setSelectedWorkspace(null);
+  };
+
+  const toggleDropdown = (workspaceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenDropdownId(openDropdownId === workspaceId ? null : workspaceId);
   };
 
   const createWorkspace = async () => {
@@ -319,29 +382,67 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
                 >
                   <div className="flex flex-col h-full">
                     <div className="flex items-start justify-between mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
+                      <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
                         <LayoutGrid className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex items-center gap-2">
                         {workspace.owner_id === user?.id && (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedWorkspace(workspace);
-                                setShowShareModal(true);
-                              }}
-                              className="p-2 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/30 text-primary-600 dark:text-primary-400 transition-all"
-                              title="Share workspace"
-                            >
-                              <Share2 className="w-4 h-4" />
-                            </button>
-                            <span className="px-2 py-1 rounded-lg text-xs font-medium bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400">
-                              Owner
-                            </span>
-                          </>
+                          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-warning-400 flex items-center justify-center">
+                            <Crown className="w-3 h-3 text-white" />
+                          </div>
                         )}
                       </div>
+                      
+                      {workspace.owner_id === user?.id && (
+                        <div className="relative" ref={openDropdownId === workspace.id ? dropdownRef : null}>
+                          <button
+                            onClick={(e) => toggleDropdown(workspace.id, e)}
+                            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
+                            title="Workspace options"
+                          >
+                            <MoreVerticalIcon className="w-4 h-4" />
+                          </button>
+                          {openDropdownId === workspace.id && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedWorkspace(workspace);
+                                  setShowShareModal(true);
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                              >
+                                <ShareIcon className="w-4 h-4" />
+                                Share Workspace
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedWorkspace(workspace);
+                                  setRenameWorkspaceName(workspace.name);
+                                  setShowRenameModal(true);
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                              >
+                                <EditIcon className="w-4 h-4" />
+                                Rename Workspace
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedWorkspace(workspace);
+                                  setShowDeleteModal(true);
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                                Delete Workspace
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
@@ -404,6 +505,75 @@ export function Workspaces({ onWorkspaceClick, onProfileClick, onInvitationsClic
           workspaceName={selectedWorkspace.name}
         />
       )}
+
+      {/* Rename Workspace Modal */}
+      <Modal
+        isOpen={showRenameModal}
+        onClose={() => {
+          setShowRenameModal(false);
+          setSelectedWorkspace(null);
+          setRenameWorkspaceName('');
+        }}
+        title="Rename Workspace"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Workspace Name"
+            value={renameWorkspaceName}
+            onChange={(e) => setRenameWorkspaceName(e.target.value)}
+            placeholder="New workspace name"
+            onKeyDown={(e) => e.key === 'Enter' && renameWorkspace()}
+            autoFocus
+          />
+          <div className="flex gap-3 justify-end">
+            <Button
+              onClick={() => {
+                setShowRenameModal(false);
+                setSelectedWorkspace(null);
+                setRenameWorkspaceName('');
+              }}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button onClick={renameWorkspace} variant="primary">
+              Rename Workspace
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Workspace Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setSelectedWorkspace(null);
+        }}
+        title="Delete Workspace"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600 dark:text-gray-400">
+            Are you sure you want to delete <span className="font-semibold text-gray-900 dark:text-gray-100">"{selectedWorkspace?.name}"</span>? This action cannot be undone and will delete all boards and data in this workspace.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button
+              onClick={() => {
+                setShowDeleteModal(false);
+                setSelectedWorkspace(null);
+              }}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button onClick={deleteWorkspace} variant="primary" className="bg-red-600 hover:bg-red-700">
+              Delete Workspace
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
