@@ -65,6 +65,10 @@ function App() {
           setSelectedBoardId(boardId);
           setCurrentView('board');
         }}
+        onWorkspaceClick={(workspaceId) => {
+          setSelectedWorkspaceId(workspaceId);
+          setCurrentView('workspace-boards');
+        }}
       />
     );
   }

@@ -21,9 +21,12 @@ CREATE INDEX idx_workspace_invitations_token ON workspace_invitations(token);
 ALTER TABLE workspace_invitations ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
-CREATE POLICY "Users can view invitations sent to them"
+CREATE POLICY "Users can view invitations sent to their email"
   ON workspace_invitations FOR SELECT
-  USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+  USING (
+    email = (SELECT email FROM auth.users WHERE id = auth.uid())
+    OR invited_by = auth.uid()
+  );
 
 CREATE POLICY "Workspace owners can create invitations"
   ON workspace_invitations FOR INSERT
@@ -35,7 +38,7 @@ CREATE POLICY "Workspace owners can create invitations"
     )
   );
 
-CREATE POLICY "Users can update their own invitations"
+CREATE POLICY "Users can update invitations sent to their email"
   ON workspace_invitations FOR UPDATE
   USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
 

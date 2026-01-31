@@ -154,18 +154,29 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const loadPendingInvitations = async () => {
     if (!user?.email) return;
 
-    const { count, error } = await supabase
+    // Count board invitations
+    const { count: boardCount, error: boardError } = await supabase
       .from('board_invitations')
       .select('*', { count: 'exact', head: true })
       .eq('email', user.email)
       .eq('accepted', false);
 
-    if (error) {
-      console.error('Error loading pending invitations:', error);
-      return;
+    if (boardError) {
+      console.error('Error loading board invitations:', boardError);
     }
 
-    setPendingInvitationsCount(count || 0);
+    // Count workspace invitations
+    const { count: workspaceCount, error: workspaceError } = await supabase
+      .from('workspace_invitations')
+      .select('*', { count: 'exact', head: true })
+      .eq('email', user.email)
+      .eq('accepted', false);
+
+    if (workspaceError) {
+      console.error('Error loading workspace invitations:', workspaceError);
+    }
+
+    setPendingInvitationsCount((boardCount || 0) + (workspaceCount || 0));
   };
 
   const loadBoardStats = async () => {
