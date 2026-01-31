@@ -43,6 +43,35 @@ export function Invitations({ onBack, onBoardClick, onWorkspaceClick }: Invitati
 
   useEffect(() => {
     loadInvitations();
+
+    // Real-time subscription for board invitations
+    const boardInvitationsSubscription = supabase
+      .channel('invitations-board-invitations')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'board_invitations'
+      }, () => {
+        loadInvitations();
+      })
+      .subscribe();
+
+    // Real-time subscription for workspace invitations
+    const workspaceInvitationsSubscription = supabase
+      .channel('invitations-workspace-invitations')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'workspace_invitations'
+      }, () => {
+        loadInvitations();
+      })
+      .subscribe();
+
+    return () => {
+      boardInvitationsSubscription.unsubscribe();
+      workspaceInvitationsSubscription.unsubscribe();
+    };
   }, []);
 
   const loadInvitations = async () => {

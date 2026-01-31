@@ -50,8 +50,9 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     if (user) {
       loadPendingInvitations();
 
-      const invitationsSubscription = supabase
-        .channel('user-invitations')
+      // Real-time subscription for board invitations
+      const boardInvitationsSubscription = supabase
+        .channel('workspace-boards-board-invitations')
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
@@ -64,11 +65,27 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
         })
         .subscribe();
 
+      // Real-time subscription for workspace invitations
+      const workspaceInvitationsSubscription = supabase
+        .channel('workspace-boards-workspace-invitations')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'workspace_invitations'
+        }, (payload) => {
+          const invitation: any = payload.new || payload.old;
+          if (invitation && invitation.email === user.email) {
+            loadPendingInvitations();
+          }
+        })
+        .subscribe();
+
       return () => {
-        invitationsSubscription.unsubscribe();
+        boardInvitationsSubscription.unsubscribe();
+        workspaceInvitationsSubscription.unsubscribe();
       };
     }
-  }, [user]);
+  }, []); // Remove user dependency to prevent reloading
 
   useEffect(() => {
     loadWorkspaceName();
