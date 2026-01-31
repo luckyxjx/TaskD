@@ -2,17 +2,19 @@ import { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
-import { Dashboard } from './pages/Dashboard';
+import { Workspaces } from './pages/Workspaces';
+import { WorkspaceBoards } from './pages/WorkspaceBoards';
 import { Board } from './pages/Board';
 import { Profile } from './pages/Profile';
 import { Invitations } from './pages/Invitations';
 import { SharedBoards } from './pages/SharedBoards';
 
-type View = 'login' | 'signup' | 'dashboard' | 'board' | 'profile' | 'invitations' | 'shared';
+type View = 'login' | 'signup' | 'workspaces' | 'workspace-boards' | 'board' | 'profile' | 'invitations' | 'shared';
 
 function App() {
   const { user, loading } = useAuth();
   const [currentView, setCurrentView] = useState<View>('login');
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
 
   if (loading) {
@@ -31,21 +33,34 @@ function App() {
       return (
         <SignUp
           onSwitchToLogin={() => setCurrentView('login')}
-          onSignUpSuccess={() => setCurrentView('dashboard')}
+          onSignUpSuccess={() => setCurrentView('workspaces')}
         />
       );
     }
     return <Login onSwitchToSignUp={() => setCurrentView('signup')} />;
   }
 
+  if (currentView === 'workspaces') {
+    return (
+      <Workspaces
+        onWorkspaceClick={(workspaceId) => {
+          setSelectedWorkspaceId(workspaceId);
+          setCurrentView('workspace-boards');
+        }}
+        onProfileClick={() => setCurrentView('profile')}
+        onInvitationsClick={() => setCurrentView('invitations')}
+      />
+    );
+  }
+
   if (currentView === 'profile') {
-    return <Profile onBack={() => setCurrentView('dashboard')} />;
+    return <Profile onBack={() => setCurrentView('workspaces')} />;
   }
 
   if (currentView === 'invitations') {
     return (
       <Invitations
-        onBack={() => setCurrentView('dashboard')}
+        onBack={() => setCurrentView('workspaces')}
         onBoardClick={(boardId) => {
           setSelectedBoardId(boardId);
           setCurrentView('board');
@@ -57,7 +72,7 @@ function App() {
   if (currentView === 'shared') {
     return (
       <SharedBoards
-        onBack={() => setCurrentView('dashboard')}
+        onBack={() => setCurrentView('workspaces')}
         onBoardClick={(boardId) => {
           setSelectedBoardId(boardId);
           setCurrentView('board');
@@ -71,21 +86,36 @@ function App() {
     return (
       <Board
         boardId={selectedBoardId}
-        onBack={() => setCurrentView('dashboard')}
+        onBack={() => setCurrentView('workspace-boards')}
         onProfileClick={() => setCurrentView('profile')}
       />
     );
   }
 
+  if (currentView === 'workspace-boards' && selectedWorkspaceId) {
+    return (
+      <WorkspaceBoards
+        workspaceId={selectedWorkspaceId}
+        onBoardClick={(boardId) => {
+          setSelectedBoardId(boardId);
+          setCurrentView('board');
+        }}
+        onBack={() => setCurrentView('workspaces')}
+        onProfileClick={() => setCurrentView('profile')}
+        onInvitationsClick={() => setCurrentView('invitations')}
+      />
+    );
+  }
+
+  // Default: show workspaces
   return (
-    <Dashboard
-      onBoardClick={(boardId) => {
-        setSelectedBoardId(boardId);
-        setCurrentView('board');
+    <Workspaces
+      onWorkspaceClick={(workspaceId) => {
+        setSelectedWorkspaceId(workspaceId);
+        setCurrentView('workspace-boards');
       }}
       onProfileClick={() => setCurrentView('profile')}
       onInvitationsClick={() => setCurrentView('invitations')}
-      onSharedBoardsClick={() => setCurrentView('shared')}
     />
   );
 }
