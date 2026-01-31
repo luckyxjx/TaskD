@@ -376,13 +376,15 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               </h1>
               <p className="text-gray-600 dark:text-gray-400">Organize your work and boost productivity</p>
             </div>
-            <Button
-              onClick={() => setShowNewBoardModal(true)}
-              variant="primary"
-              icon={Plus}
-            >
-              New Board
-            </Button>
+            {filteredBoards.length > 0 && (
+              <Button
+                onClick={() => setShowNewBoardModal(true)}
+                variant="primary"
+                icon={Plus}
+              >
+                New Board
+              </Button>
+            )}
           </div>
 
           {filteredBoards.length === 0 ? (

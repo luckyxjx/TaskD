@@ -28,35 +28,17 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
   const [showMembers, setShowMembers] = useState(false);
 
   const loadMembers = async () => {
-    const { data, error } = await supabase
-      .from('board_members')
-      .select('*')
-      .eq('board_id', boardId);
+    const { data, error } = await supabase.rpc('get_board_members', {
+      p_board_id: boardId
+    });
 
     if (error) {
       console.error('Error loading members:', error);
+      alert('Failed to load members: ' + error.message);
       return;
     }
 
-    // Get user emails
-    const membersWithEmails = await Promise.all(
-      (data || []).map(async (member) => {
-        const { data: emailData, error: emailError } = await supabase.rpc('get_user_email', {
-          user_uuid: member.user_id
-        });
-
-        if (emailError) {
-          console.error('Error fetching user email:', emailError);
-        }
-        
-        return {
-          ...member,
-          email: emailData || 'Unknown'
-        };
-      })
-    );
-
-    setMembers(membersWithEmails);
+    setMembers(data || []);
     setShowMembers(true);
   };
 
@@ -140,14 +122,15 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
 
     if (!confirm('Remove this member from the board?')) return;
 
-    const { error } = await supabase
-      .from('board_members')
-      .delete()
-      .eq('id', memberId);
+    const { error } = await supabase.rpc('manage_board_member_role', {
+      p_board_id: boardId,
+      p_member_id: memberId,
+      p_action: 'remove'
+    });
 
     if (error) {
       console.error('Error removing member:', error);
-      alert('Failed to remove member');
+      alert('Failed to remove member: ' + error.message);
       return;
     }
 
@@ -161,24 +144,16 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
       return;
     }
 
-    // Check if current user is owner
-    const currentUser = (await supabase.auth.getUser()).data.user;
-    if (!currentUser) return;
-
-    const currentUserMembership = members.find(m => m.user_id === currentUser.id);
-    if (!currentUserMembership || currentUserMembership.role !== 'owner') {
-      alert('Only the board owner can change member roles!');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('board_members')
-      .update({ role: newRole })
-      .eq('id', memberId);
+    const { error } = await supabase.rpc('manage_board_member_role', {
+      p_board_id: boardId,
+      p_member_id: memberId,
+      p_action: 'update_role',
+      p_new_role: newRole
+    });
 
     if (error) {
       console.error('Error changing role:', error);
-      alert('Failed to change member role');
+      alert('Failed to change member role: ' + error.message);
       return;
     }
 
