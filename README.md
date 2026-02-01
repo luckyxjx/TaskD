@@ -1,5 +1,9 @@
 # TaskD - Modern Task Management
 
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18.3-61dafb.svg)](https://react.dev)
+
 A modern, responsive Kanban board application built with React, TypeScript, Vite, and Supabase.
 
 ## ✨ Features
@@ -148,17 +152,18 @@ taskd/
 - GitHub OAuth
 - Secure session management
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing`)
-3. Commit changes (`git commit -m 'Add feature'`)
-4. Push to branch (`git push origin feature/amazing`)
-5. Open Pull Request
-
 ## 📄 License
 
-MIT License - feel free to use for personal or commercial projects.
+This project is **not open source**.
+
+The source code is made available for **educational review, portfolio
+demonstration, and hiring evaluation purposes only**.
+
+Commercial use, redistribution, modification, or deployment of the source
+code is not permitted without explicit written permission.
+
+See the [LICENSE](./LICENSE) file for full terms.
+
 
 ## 🆘 Support
 

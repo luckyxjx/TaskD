@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "author": "Lucky <vklucky442@gmail.com>",
+  "license": "UNLICENSED",
+  "description": "Modern Kanban task management application",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
