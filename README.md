@@ -177,5 +177,3 @@ Built with:
 - [Vercel](https://vercel.com)
 
 ---
-
-Made with ❤️ by [Your Name]
