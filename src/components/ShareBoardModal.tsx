@@ -27,15 +27,63 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [showMembers, setShowMembers] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [loadingOwnership, setLoadingOwnership] = useState(true);
 
-  // Get current user ID
+  // Get current user ID, check ownership, and auto-load members when modal opens
   useEffect(() => {
-    const getCurrentUser = async () => {
+    const initializeModal = async () => {
+      if (!isOpen) {
+        // Reset when modal closes
+        setShowMembers(false);
+        setEmail('');
+        setLoadingOwnership(true);
+        return;
+      }
+
+      setLoadingOwnership(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) setCurrentUserId(user.id);
+      if (!user) {
+        setLoadingOwnership(false);
+        return;
+      }
+
+      setCurrentUserId(user.id);
+
+      // Check ownership directly from database
+      const { data: memberData, error } = await supabase
+        .from('board_members')
+        .select('role')
+        .eq('board_id', boardId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!error && memberData) {
+        setIsOwner(memberData.role === 'owner');
+      }
+
+      setLoadingOwnership(false);
+
+      // Auto-load members
+      loadMembersWithUserId(user.id);
+      setShowMembers(true); // Auto-show members section
     };
-    getCurrentUser();
-  }, []);
+    
+    initializeModal();
+  }, [isOpen, boardId]);
+
+  const loadMembersWithUserId = async (userId: string) => {
+    const { data, error } = await supabase.rpc('get_board_members', {
+      p_board_id: boardId
+    });
+
+    if (error) {
+      console.error('Error loading members:', error);
+      return;
+    }
+
+    setMembers(data || []);
+  };
 
   const loadMembers = async () => {
     const { data, error } = await supabase.rpc('get_board_members', {
@@ -52,11 +100,9 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
     setShowMembers(true);
   };
 
-  // Check if current user is owner
+  // Check if current user is owner (now using state instead of checking members array)
   const isCurrentUserOwner = () => {
-    if (!currentUserId) return false;
-    const currentUser = members.find(m => m.user_id === currentUserId);
-    return currentUser?.role === 'owner';
+    return isOwner;
   };
 
   const inviteUser = async () => {
@@ -234,6 +280,14 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Share "${boardName}"`} size="md">
       <div className="space-y-6">
+        {/* Loading State */}
+        {loadingOwnership ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+          </div>
+        ) : (
+          <>
         {/* Invite Section - Only for owners */}
         {isCurrentUserOwner() && (
           <div>
@@ -379,6 +433,8 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </Modal>
   );
