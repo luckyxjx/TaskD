@@ -698,10 +698,39 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           </div>
 
           {/* Activity Feed Sidebar */}
+          {/* Activity Feed Slide-over */}
           {showActivityFeed && (
-            <div className="w-80 flex-shrink-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
-              <ActivityFeed boardId={boardId} />
-            </div>
+            <>
+              {/* Backdrop */}
+              <div 
+                className="fixed inset-0 bg-black/50 z-40 animate-fade-in"
+                onClick={() => setShowActivityFeed(false)}
+              />
+              
+              {/* Slide-over Panel */}
+              <div className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 shadow-2xl z-50 animate-slide-in-right overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-3">
+                    <ActivityIcon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Activity</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowActivityFeed(false)}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Activity Feed Content */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                  <ActivityFeed boardId={boardId} />
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>

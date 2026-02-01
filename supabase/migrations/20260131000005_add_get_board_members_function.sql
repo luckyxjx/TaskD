@@ -30,7 +30,7 @@ BEGIN
     bm.user_id,
     bm.role,
     bm.accepted_at,
-    COALESCE(au.email, 'Unknown') as email
+    COALESCE(au.email::TEXT, 'Unknown'::TEXT) as email
   FROM board_members bm
   LEFT JOIN auth.users au ON au.id = bm.user_id
   WHERE bm.board_id = p_board_id
