@@ -66,20 +66,23 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
     try {
       const normalizedEmail = email.trim().toLowerCase();
       
-      // Check if invitation already exists for this email
+      // Check if invitation already exists for this email (only non-expired, unaccepted ones)
+      const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+      
       const { data: existingInvitations, error: inviteCheckError } = await supabase
         .from('board_invitations')
-        .select('id')
+        .select('id, created_at')
         .eq('board_id', boardId)
         .eq('email', normalizedEmail)
-        .eq('accepted', false);
+        .eq('accepted', false)
+        .gt('created_at', fourHoursAgo); // Only check invitations from last 4 hours
 
       if (inviteCheckError) {
         console.error('Error checking invitations:', inviteCheckError);
       }
 
       if (existingInvitations && existingInvitations.length > 0) {
-        alert('An invitation has already been sent to this email!');
+        alert('An invitation was sent to this email recently. Please wait 4 hours before sending another.');
         setLoading(false);
         return;
       }

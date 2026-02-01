@@ -51,8 +51,15 @@ export function Invitations({ onBack, onBoardClick, onWorkspaceClick }: Invitati
         event: '*',
         schema: 'public',
         table: 'board_invitations'
-      }, () => {
-        loadInvitations();
+      }, (payload) => {
+        // Only reload if it's a new invitation or update to unaccepted invitation
+        if (payload.eventType === 'INSERT' || 
+            (payload.eventType === 'UPDATE' && !(payload.new as any)?.accepted)) {
+          loadInvitations();
+        } else if (payload.eventType === 'DELETE') {
+          // Remove from local state
+          setBoardInvitations(prev => prev.filter(inv => inv.id !== (payload.old as any)?.id));
+        }
       })
       .subscribe();
 
@@ -63,8 +70,15 @@ export function Invitations({ onBack, onBoardClick, onWorkspaceClick }: Invitati
         event: '*',
         schema: 'public',
         table: 'workspace_invitations'
-      }, () => {
-        loadInvitations();
+      }, (payload) => {
+        // Only reload if it's a new invitation or update to unaccepted invitation
+        if (payload.eventType === 'INSERT' || 
+            (payload.eventType === 'UPDATE' && !(payload.new as any)?.accepted)) {
+          loadInvitations();
+        } else if (payload.eventType === 'DELETE') {
+          // Remove from local state
+          setWorkspaceInvitations(prev => prev.filter(inv => inv.id !== (payload.old as any)?.id));
+        }
       })
       .subscribe();
 
