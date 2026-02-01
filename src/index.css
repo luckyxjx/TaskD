@@ -40,7 +40,7 @@
     @apply animate-fade-in-up;
   }
   
-  /* Slide-in Animation */
+  /* Slide-in Animation from Right Edge */
   @keyframes slide-in-right {
     from {
       transform: translateX(100%);
@@ -51,7 +51,7 @@
   }
   
   .animate-slide-in-right {
-    animation: slide-in-right 0.3s ease-out;
+    animation: slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   
   /* Fade-in Animation */

@@ -708,7 +708,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
               />
               
               {/* Slide-over Panel */}
-              <div className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 shadow-2xl z-50 animate-slide-in-right overflow-hidden flex flex-col">
+              <div className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 shadow-2xl z-50 overflow-hidden flex flex-col" style={{ animation: 'slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3">
