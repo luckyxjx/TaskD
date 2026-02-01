@@ -48,7 +48,9 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [renameWorkspaceName, setRenameWorkspaceName] = useState('');
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [openBoardDropdownId, setOpenBoardDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const boardDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -97,6 +99,9 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpenDropdownId(null);
+      }
+      if (boardDropdownRef.current && !boardDropdownRef.current.contains(event.target as Node)) {
+        setOpenBoardDropdownId(null);
       }
     };
 
@@ -287,6 +292,37 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
   const toggleDropdown = (workspaceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setOpenDropdownId(openDropdownId === workspaceId ? null : workspaceId);
+  };
+
+  const toggleBoardDropdown = (boardId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenBoardDropdownId(openBoardDropdownId === boardId ? null : boardId);
+  };
+
+  const leaveBoard = async (boardId: string, boardName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!user) return;
+
+    if (!confirm(`Are you sure you want to leave "${boardName}"? You will lose access to this board.`)) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('board_members')
+      .delete()
+      .eq('board_id', boardId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error leaving board:', error);
+      alert('Failed to leave board');
+      return;
+    }
+
+    // Remove from local state
+    setSharedBoards(sharedBoards.filter(b => b.id !== boardId));
+    setOpenBoardDropdownId(null);
   };
 
   const createWorkspace = async () => {
@@ -694,6 +730,28 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
                           <div className="flex items-start justify-between mb-4">
                             <div className="w-12 h-12 rounded-xl bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
                               <LayoutGrid className="w-6 h-6 text-accent-600 dark:text-accent-400" />
+                            </div>
+                            
+                            {/* Board Options Dropdown */}
+                            <div className="relative" ref={openBoardDropdownId === board.id ? boardDropdownRef : null}>
+                              <button
+                                onClick={(e) => toggleBoardDropdown(board.id, e)}
+                                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
+                                title="Board options"
+                              >
+                                <MoreVerticalIcon className="w-4 h-4" />
+                              </button>
+                              {openBoardDropdownId === board.id && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
+                                  <button
+                                    onClick={(e) => leaveBoard(board.id, board.name, e)}
+                                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                                  >
+                                    <TrashIcon className="w-4 h-4" />
+                                    Leave Board
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
 
