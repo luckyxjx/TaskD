@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
@@ -26,6 +26,16 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [showMembers, setShowMembers] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Get current user ID
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setCurrentUserId(user.id);
+    };
+    getCurrentUser();
+  }, []);
 
   const loadMembers = async () => {
     const { data, error } = await supabase.rpc('get_board_members', {
@@ -40,6 +50,13 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
 
     setMembers(data || []);
     setShowMembers(true);
+  };
+
+  // Check if current user is owner
+  const isCurrentUserOwner = () => {
+    if (!currentUserId) return false;
+    const currentUser = members.find(m => m.user_id === currentUserId);
+    return currentUser?.role === 'owner';
   };
 
   const inviteUser = async () => {
@@ -214,11 +231,12 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Share "${boardName}"`} size="md">
       <div className="space-y-6">
-        {/* Invite Section */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-            Invite by Email
-          </h3>
+        {/* Invite Section - Only for owners */}
+        {isCurrentUserOwner() && (
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Invite by Email
+            </h3>
           <div className="space-y-3">
             <Input
               label="Email Address"
@@ -270,6 +288,7 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
             </Button>
           </div>
         </div>
+        )}
 
         {/* Members Section */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -314,38 +333,44 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
                       <div className="flex items-center gap-2">
                         {member.role === 'owner' ? (
                           getRoleBadge(member.role)
+                        ) : isCurrentUserOwner() ? (
+                          // Only owners can change roles
+                          <>
+                            <select
+                              value={member.role}
+                              onChange={(e) => changeRole(member.id, member.role, e.target.value as 'editor' | 'viewer')}
+                              className="px-2 py-1 rounded-lg text-xs font-medium border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                            >
+                              <option value="editor">Editor</option>
+                              <option value="viewer">Viewer</option>
+                            </select>
+                            <button
+                              onClick={() => removeMember(member.id, member.role)}
+                              className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                              title="Remove member"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </>
                         ) : (
-                          <select
-                            value={member.role}
-                            onChange={(e) => changeRole(member.id, member.role, e.target.value as 'editor' | 'viewer')}
-                            className="px-2 py-1 rounded-lg text-xs font-medium border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                          >
-                            <option value="editor">Editor</option>
-                            <option value="viewer">Viewer</option>
-                          </select>
-                        )}
-                        {member.role !== 'owner' && (
-                          <button
-                            onClick={() => removeMember(member.id, member.role)}
-                            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                            title="Remove member"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
+                          // Non-owners just see the role badge
+                          getRoleBadge(member.role)
                         )}
                       </div>
                     </div>
                   ))}
                   
-                  {/* Leave Board Button */}
-                  <Button
-                    onClick={leaveBoard}
-                    variant="secondary"
-                    icon={LogOutIcon}
-                    className="w-full mt-4 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-                  >
-                    Leave Board
-                  </Button>
+                  {/* Leave Board Button - Only for non-owners */}
+                  {!isCurrentUserOwner() && (
+                    <Button
+                      onClick={leaveBoard}
+                      variant="secondary"
+                      icon={LogOutIcon}
+                      className="w-full mt-4 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    >
+                      Leave Board
+                    </Button>
+                  )}
                 </>
               )}
             </div>

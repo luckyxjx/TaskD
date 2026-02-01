@@ -7,7 +7,7 @@ import { Input } from '../components/Input';
 import { ShareBoardModal } from '../components/ShareBoardModal';
 import { CardComments } from '../components/CardComments';
 import { ActivityFeed } from '../components/ActivityFeed';
-import { ShareIcon, ActivityIcon } from '../icons';
+import { ShareIcon, ActivityIcon, LogOutIcon } from '../icons';
 
 interface List {
   id: string;
@@ -56,6 +56,27 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [renameBoardName, setRenameBoardName] = useState('');
   const [showBoardMenu, setShowBoardMenu] = useState(false);
   const [showListMenu, setShowListMenu] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+
+  // Check if current user is board owner
+  useEffect(() => {
+    const checkOwnership = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('board_members')
+        .select('role')
+        .eq('board_id', boardId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!error && data) {
+        setIsOwner(data.role === 'owner');
+      }
+    };
+    checkOwnership();
+  }, [boardId]);
 
   useEffect(() => {
     loadBoardData();
@@ -564,27 +585,58 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                 </button>
                 {showBoardMenu && (
                   <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
-                    <button
-                      onClick={() => {
-                        setRenameBoardName(boardName);
-                        setShowRenameBoardModal(true);
-                        setShowBoardMenu(false);
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      Rename Board
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowDeleteBoardModal(true);
-                        setShowBoardMenu(false);
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete Board
-                    </button>
+                    {isOwner ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setRenameBoardName(boardName);
+                            setShowRenameBoardModal(true);
+                            setShowBoardMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          Rename Board
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowDeleteBoardModal(true);
+                            setShowBoardMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Board
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (!user) return;
+
+                          if (!confirm('Are you sure you want to leave this board?')) return;
+
+                          const { error } = await supabase
+                            .from('board_members')
+                            .delete()
+                            .eq('board_id', boardId)
+                            .eq('user_id', user.id);
+
+                          if (error) {
+                            alert('Failed to leave board');
+                            return;
+                          }
+
+                          alert('You have left the board');
+                          onBack();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                      >
+                        <LogOutIcon className="w-4 h-4" />
+                        Leave Board
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
