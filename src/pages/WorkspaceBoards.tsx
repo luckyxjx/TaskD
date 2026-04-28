@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, ArrowLeft, Plus, LayoutGrid, Sparkles, CheckCircle2, Clock, AlertTriangle, Activity, Bell, Home } from 'lucide-react';
+import { Search, User, Users, ArrowLeft, Plus, LayoutGrid, Sparkles, CheckCircle2, Clock, AlertTriangle, Activity, Bell, Home } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -13,6 +13,9 @@ interface Board {
   name: string;
   workspace_id: string;
 }
+
+type WorkspaceRole = 'owner' | 'editor' | 'viewer';
+type BoardRole = 'owner' | 'editor' | 'viewer';
 
 interface BoardStats {
   [boardId: string]: {
@@ -42,6 +45,8 @@ interface CardStatsRow {
   list_id: string;
   priority?: string | null;
   due_date?: string | null;
+  assignee_id?: string | null;
+  reminder_at?: string | null;
 }
 
 interface WorkspaceCardSearchResult {
@@ -50,6 +55,7 @@ interface WorkspaceCardSearchResult {
   description: string | null;
   label: string | null;
   due_date: string | null;
+  reminder_at: string | null;
   board_id: string;
   board_name: string;
 }
@@ -65,7 +71,9 @@ interface WorkspaceBoardsProps {
 export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileClick, onInvitationsClick }: WorkspaceBoardsProps) {
   const { user } = useAuth();
   const [workspaceName, setWorkspaceName] = useState('');
+  const [workspaceRole, setWorkspaceRole] = useState<WorkspaceRole>('viewer');
   const [boards, setBoards] = useState<Board[]>([]);
+  const [boardRoles, setBoardRoles] = useState<Record<string, BoardRole>>({});
   const [boardStats, setBoardStats] = useState<BoardStats>({});
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [workspaceCards, setWorkspaceCards] = useState<WorkspaceCardSearchResult[]>([]);
@@ -73,6 +81,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState<'dashboard' | 'boards' | 'activity'>('dashboard');
+  const [showNotifications, setShowNotifications] = useState(false);
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
   const [showRenameBoardModal, setShowRenameBoardModal] = useState(false);
@@ -125,7 +134,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   }, []); // Remove user dependency to prevent reloading
 
   useEffect(() => {
-    loadWorkspaceName();
+    loadWorkspaceContext();
     loadBoards();
 
     const boardsSubscription = supabase
@@ -163,6 +172,14 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   }, [boards]);
 
   useEffect(() => {
+    if (boards.length > 0) {
+      void loadBoardRoles(boards.map((board) => board.id));
+    } else {
+      setBoardRoles({});
+    }
+  }, [boards, workspaceRole, user?.id]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpenDropdownId(null);
@@ -173,10 +190,51 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const loadWorkspaceName = async () => {
+  const mapWorkspaceRole = (role: string | null | undefined): WorkspaceRole => {
+    if (role === 'owner') return 'owner';
+    if (role === 'admin') return 'editor';
+    return 'viewer';
+  };
+
+  const getBoardRole = (boardId: string): BoardRole => {
+    if (workspaceRole === 'owner') return 'owner';
+    return boardRoles[boardId] || 'viewer';
+  };
+
+  const canCreateBoards = workspaceRole === 'owner';
+
+  const canManageBoard = (boardId: string) => {
+    const role = getBoardRole(boardId);
+    return workspaceRole === 'owner' || role === 'owner';
+  };
+
+  const canEditBoard = (boardId: string) => {
+    const role = getBoardRole(boardId);
+    return workspaceRole === 'owner' || role === 'owner' || role === 'editor';
+  };
+
+  const getBoardPermissionMessage = (boardId: string) => {
+    const role = getBoardRole(boardId);
+
+    if (workspaceRole === 'owner') {
+      return 'You own this workspace and can fully manage all boards inside it.';
+    }
+
+    if (role === 'owner') {
+      return 'You own this board and can rename or delete it.';
+    }
+
+    if (role === 'editor') {
+      return 'You can edit cards and lists inside this board, but only owners can rename or delete it.';
+    }
+
+    return 'You can view this board, but editing and board management are disabled for viewers.';
+  };
+
+  const loadWorkspaceContext = async () => {
     const { data, error } = await supabase
       .from('workspaces')
-      .select('name')
+      .select('name, owner_id')
       .eq('id', workspaceId)
       .single();
 
@@ -187,7 +245,32 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
     if (data) {
       setWorkspaceName(data.name);
+
+      if (user?.id && data.owner_id === user.id) {
+        setWorkspaceRole('owner');
+        return;
+      }
     }
+
+    if (!user?.id) {
+      setWorkspaceRole('viewer');
+      return;
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Error loading workspace role:', membershipError);
+      setWorkspaceRole('viewer');
+      return;
+    }
+
+    setWorkspaceRole(mapWorkspaceRole(membership?.role));
   };
 
   const loadBoards = async () => {
@@ -205,7 +288,51 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     }
 
     setBoards(data || []);
+    void loadBoardRoles((data || []).map((board) => board.id));
     setLoadingBoards(false);
+  };
+
+  const loadBoardRoles = async (boardIds: string[]) => {
+    if (!user?.id || boardIds.length === 0) {
+      setBoardRoles({});
+      return;
+    }
+
+    if (workspaceRole === 'owner') {
+      setBoardRoles(
+        boardIds.reduce<Record<string, BoardRole>>((acc, boardId) => {
+          acc[boardId] = 'owner';
+          return acc;
+        }, {})
+      );
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('board_members')
+      .select('board_id, role')
+      .eq('user_id', user.id)
+      .in('board_id', boardIds);
+
+    if (error) {
+      console.error('Error loading board roles:', error);
+      setBoardRoles({});
+      return;
+    }
+
+    const membershipMap = new Map(
+      ((data || []) as Array<{ board_id: string; role: BoardRole }>).map((membership) => [
+        membership.board_id,
+        membership.role,
+      ])
+    );
+
+    setBoardRoles(
+      boardIds.reduce<Record<string, BoardRole>>((acc, boardId) => {
+        acc[boardId] = membershipMap.get(boardId) || 'viewer';
+        return acc;
+      }, {})
+    );
   };
 
   const loadPendingInvitations = async () => {
@@ -254,7 +381,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
       const { data: cardData, count: totalCount } = await supabase
         .from('cards')
-        .select('id, list_id, priority, due_date', { count: 'exact' })
+        .select('id, list_id, priority, due_date, assignee_id, reminder_at', { count: 'exact' })
         .in('list_id', lists.map(l => l.id));
 
       let completedCount = 0;
@@ -305,7 +432,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     const listBoardMap = new Map((lists as { id: string; board_id: string }[]).map((list) => [list.id, list.board_id]));
     const { data: cardsData, error: cardsError } = await supabase
       .from('cards')
-      .select('id, list_id, title, description, label, due_date')
+      .select('id, list_id, title, description, label, due_date, reminder_at')
       .in('list_id', lists.map((list) => list.id))
       .order('updated_at', { ascending: false })
       .limit(80);
@@ -323,6 +450,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       description: string | null;
       label: string | null;
       due_date: string | null;
+      reminder_at: string | null;
     }>).map((card) => {
       const boardId = listBoardMap.get(card.list_id) || '';
       return {
@@ -331,6 +459,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
         description: card.description,
         label: card.label,
         due_date: card.due_date,
+        reminder_at: card.reminder_at,
         board_id: boardId,
         board_name: boardNames.get(boardId) || 'Board',
       };
@@ -364,7 +493,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   };
 
   const createBoard = async () => {
-    if (!workspaceId || !newBoardName.trim()) return;
+    if (!workspaceId || !newBoardName.trim() || !canCreateBoards) return;
 
     const { data: boardId, error } = await supabase.rpc('create_board_as_owner', {
       p_workspace_id: workspaceId,
@@ -393,7 +522,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   };
 
   const renameBoard = async () => {
-    if (!boardToRename || !renameBoardName.trim()) return;
+    if (!boardToRename || !renameBoardName.trim() || !canManageBoard(boardToRename.id)) return;
 
     const { error } = await supabase
       .from('boards')
@@ -412,7 +541,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   };
 
   const deleteBoard = async () => {
-    if (!boardToDelete) return;
+    if (!boardToDelete || !canManageBoard(boardToDelete.id)) return;
 
     const { error } = await supabase
       .from('boards')
@@ -448,6 +577,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     { total: 0, completed: 0, overdue: 0, urgent: 0 }
   );
   const dashboardCompletion = dashboardStats.total > 0 ? Math.round((dashboardStats.completed / dashboardStats.total) * 100) : 0;
+  const activeBoards = boards.filter((board) => (boardStats[board.id]?.total || 0) > 0).length;
 
   const formatActivityMessage = (activity: RecentActivity) => {
     const target = activity.metadata?.title || activity.metadata?.name || activity.entity_type;
@@ -482,6 +612,30 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     }).slice(0, 6)
     : [];
 
+  const now = new Date();
+  const upcomingNotifications = workspaceCards
+    .filter((card) => {
+      if (card.reminder_at && new Date(card.reminder_at) <= new Date(now.getTime() + 24 * 60 * 60 * 1000)) return true;
+      if (card.due_date) {
+        const due = new Date(`${card.due_date}T23:59:59`);
+        return due <= new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      }
+      return false;
+    })
+    .slice(0, 8);
+
+  const overdueCards = workspaceCards.filter((card) => {
+    if (!card.due_date) return false;
+    return new Date(`${card.due_date}T23:59:59`) < now;
+  });
+
+  const assigneeWorkload = workspaceCards.reduce<Record<string, number>>((acc, card) => {
+    const key = card.board_name;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const topWorkload = Object.entries(assigneeWorkload).slice(0, 5);
+
   const navButtonClass = (section: 'dashboard' | 'boards' | 'activity') =>
     `w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-colors ${
       activeSection === section
@@ -500,6 +654,12 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     : activeSection === 'activity'
       ? 'Recent work history across the boards in this workspace.'
       : 'Organize your work and boost productivity';
+
+  const workspaceRoleTone = workspaceRole === 'owner'
+    ? 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-300'
+    : workspaceRole === 'editor'
+      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+      : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
 
   const SkeletonDashboard = () => (
     <div className="space-y-8 animate-fade-in">
@@ -641,20 +801,51 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
             </div>
 
             {onInvitationsClick && (
-              <button
-                onClick={onInvitationsClick}
-                className="relative p-3 rounded-xl bg-white/[0.04] border border-white/5 text-accent-300 hover:bg-white/[0.07] transition-all duration-200"
-                title="View invitations"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                {pendingInvitationsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-danger-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse-slow">
-                    {pendingInvitationsCount > 9 ? '9+' : pendingInvitationsCount}
-                  </span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-3 rounded-xl bg-white/[0.04] border border-white/5 text-accent-300 hover:bg-white/[0.07] transition-all duration-200"
+                  title="Notifications"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  {(pendingInvitationsCount + upcomingNotifications.length) > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-danger-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse-slow">
+                      {pendingInvitationsCount + upcomingNotifications.length > 9 ? '9+' : pendingInvitationsCount + upcomingNotifications.length}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <div className="absolute right-0 top-full mt-2 w-96 surface-card rounded-xl p-4 z-40">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-white">Notifications</h3>
+                      {pendingInvitationsCount > 0 && (
+                        <button onClick={onInvitationsClick} className="text-xs font-semibold text-primary-300">View invites</button>
+                      )}
+                    </div>
+                    <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+                      {pendingInvitationsCount > 0 && (
+                        <button onClick={onInvitationsClick} className="w-full text-left rounded-lg bg-white/[0.04] p-3">
+                          <p className="text-sm font-semibold text-white">{pendingInvitationsCount} pending invitation{pendingInvitationsCount === 1 ? '' : 's'}</p>
+                          <p className="text-xs text-gray-500">Workspace or board access needs review.</p>
+                        </button>
+                      )}
+                      {upcomingNotifications.map((card) => (
+                        <button key={card.id} onClick={() => onBoardClick(card.board_id)} className="w-full text-left rounded-lg bg-white/[0.04] p-3 hover:bg-white/[0.07]">
+                          <p className="text-sm font-semibold text-white">{card.title}</p>
+                          <p className="text-xs text-gray-500">
+                            {card.reminder_at ? `Reminder ${new Date(card.reminder_at).toLocaleString()}` : `Due ${card.due_date}`} in {card.board_name}
+                          </p>
+                        </button>
+                      ))}
+                      {pendingInvitationsCount === 0 && upcomingNotifications.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-8">No notifications</p>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </button>
+              </div>
             )}
 
             <button
@@ -676,8 +867,19 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                 {sectionTitle}
               </h1>
               <p className="text-gray-500">{sectionSubtitle}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold ${workspaceRoleTone}`}>
+                  <Users className="w-4 h-4" />
+                  Workspace role: {workspaceRole.charAt(0).toUpperCase() + workspaceRole.slice(1)}
+                </span>
+                {workspaceRole !== 'owner' && (
+                  <span className="text-sm text-gray-500">
+                    Only workspace owners can create, rename, or delete boards here.
+                  </span>
+                )}
+              </div>
             </div>
-            {activeSection !== 'activity' && filteredBoards.length > 0 && (
+            {activeSection !== 'activity' && filteredBoards.length > 0 && canCreateBoards && (
               <Button
                 onClick={() => setShowNewBoardModal(true)}
                 variant="primary"
@@ -698,6 +900,9 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                   { label: 'Completed', value: `${dashboardStats.completed} (${dashboardCompletion}%)`, icon: CheckCircle2, tone: 'success' },
                   { label: 'Overdue', value: dashboardStats.overdue, icon: AlertTriangle, tone: 'danger' },
                   { label: 'Urgent', value: dashboardStats.urgent, icon: Clock, tone: 'warning' },
+                  { label: 'Active boards', value: activeBoards, icon: Activity, tone: 'primary' },
+                  { label: 'Due alerts', value: upcomingNotifications.length, icon: Bell, tone: 'warning' },
+                  { label: 'Overdue cards', value: overdueCards.length, icon: AlertTriangle, tone: 'danger' },
                 ].map((item) => {
                   const Icon = item.icon;
                   const toneClasses = {
@@ -751,6 +956,27 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                     ))}
                   </div>
                 )}
+              </div>
+              <div className="surface-card rounded-2xl p-5 xl:col-span-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-bold text-white">Board Workload</h2>
+                  <span className="text-xs text-gray-600">Cards by board</span>
+                </div>
+                <div className="space-y-3">
+                  {topWorkload.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-6 text-center">No workload data yet</p>
+                  ) : topWorkload.map(([name, count]) => (
+                    <div key={name}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-gray-300">{name}</span>
+                        <span className="text-gray-500 tabular-nums">{count}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                        <div className="h-full rounded-full bg-primary-500" style={{ width: `${Math.max(8, (count / Math.max(1, dashboardStats.total)) * 100)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -816,19 +1042,32 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               <p className="text-gray-500 mb-6 max-w-md mx-auto">
                 Create your first board to start organizing your tasks and projects
               </p>
-              <Button
-                onClick={() => setShowNewBoardModal(true)}
-                variant="primary"
-                icon={Plus}
-              >
-                Create Your First Board
-              </Button>
+              {canCreateBoards ? (
+                <Button
+                  onClick={() => setShowNewBoardModal(true)}
+                  variant="primary"
+                  icon={Plus}
+                >
+                  Create Your First Board
+                </Button>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  You can view boards in this workspace, but only the workspace owner can create new boards.
+                </p>
+              )}
             </div>
           ) : activeSection !== 'activity' ? (
             <div id="boards-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
               {filteredBoards.map((board, index) => {
                 const stats = boardStats[board.id] || { total: 0, completed: 0, overdue: 0, urgent: 0 };
                 const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+                const boardRole = getBoardRole(board.id);
+                const boardRoleTone = boardRole === 'owner'
+                  ? 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-300'
+                  : boardRole === 'editor'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+                const boardPermissionMessage = getBoardPermissionMessage(board.id);
 
                 return (
                   <Card
@@ -842,7 +1081,11 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                       <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
                         <LayoutGrid className="w-6 h-6 text-primary-300" />
                       </div>
-                      <div className="relative" ref={openDropdownId === board.id ? dropdownRef : null}>
+                      <div className="flex items-start gap-2">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${boardRoleTone}`}>
+                          {boardRole.charAt(0).toUpperCase() + boardRole.slice(1)}
+                        </span>
+                        <div className="relative" ref={openDropdownId === board.id ? dropdownRef : null}>
                         <button
                           onClick={(e) => toggleDropdown(board.id, e)}
                           className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
@@ -855,12 +1098,19 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (!canManageBoard(board.id)) return;
                                 setBoardToRename(board);
                                 setRenameBoardName(board.name);
                                 setShowRenameBoardModal(true);
                                 setOpenDropdownId(null);
                               }}
-                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                              disabled={!canManageBoard(board.id)}
+                              title={!canManageBoard(board.id) ? boardPermissionMessage : 'Rename board'}
+                              className={`w-full px-4 py-2 text-left text-sm flex items-center gap-3 transition-colors ${
+                                canManageBoard(board.id)
+                                  ? 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                  : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                              }`}
                             >
                               <EditIcon className="w-4 h-4" />
                               Rename Board
@@ -868,17 +1118,28 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (!canManageBoard(board.id)) return;
                                 setBoardToDelete(board);
                                 setShowDeleteBoardModal(true);
                                 setOpenDropdownId(null);
                               }}
-                              className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                              disabled={!canManageBoard(board.id)}
+                              title={!canManageBoard(board.id) ? boardPermissionMessage : 'Delete board'}
+                              className={`w-full px-4 py-2 text-left text-sm flex items-center gap-3 transition-colors ${
+                                canManageBoard(board.id)
+                                  ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                  : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                              }`}
                             >
                               <TrashIcon className="w-4 h-4" />
                               Delete Board
                             </button>
+                            <p className="px-4 pt-2 mt-1 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+                              {boardPermissionMessage}
+                            </p>
                           </div>
                         )}
+                      </div>
                       </div>
                     </div>
 
@@ -913,6 +1174,13 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                           </span>
                         )}
                       </div>
+                      <p className="pt-2 text-xs text-gray-500">
+                        {canEditBoard(board.id)
+                          ? boardRole === 'owner'
+                            ? 'Full board management available.'
+                            : 'Can edit cards and lists inside this board.'
+                          : 'Read-only access.'}
+                      </p>
                     </div>
                   </Card>
                 );

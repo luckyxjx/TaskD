@@ -15,9 +15,10 @@ interface Comment {
 
 interface CardCommentsProps {
   cardId: string;
+  boardMembers?: Array<{ user_id: string; email?: string }>;
 }
 
-export function CardComments({ cardId }: CardCommentsProps) {
+export function CardComments({ cardId, boardMembers = [] }: CardCommentsProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -96,12 +97,17 @@ export function CardComments({ cardId }: CardCommentsProps) {
     setLoading(true);
     const { data: user } = await supabase.auth.getUser();
 
+    const mentionedUserIds = boardMembers
+      .filter((member) => member.email && newComment.toLowerCase().includes(`@${member.email.toLowerCase().split('@')[0]}`))
+      .map((member) => member.user_id);
+
     const { error } = await supabase
       .from('card_comments')
       .insert([{
         card_id: cardId,
         user_id: user.user?.id,
-        content: newComment.trim()
+        content: newComment.trim(),
+        mentions: mentionedUserIds,
       }]);
 
     if (error) {
@@ -112,6 +118,16 @@ export function CardComments({ cardId }: CardCommentsProps) {
       loadComments();
     }
     setLoading(false);
+  };
+
+  const renderCommentContent = (content: string) => {
+    const parts = content.split(/(@[a-zA-Z0-9._-]+)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('@')) {
+        return <span key={`${part}-${index}`} className="font-semibold text-primary-600 dark:text-primary-300">{part}</span>;
+      }
+      return <span key={`${part}-${index}`}>{part}</span>;
+    });
   };
 
   const updateComment = async (commentId: string) => {
@@ -251,7 +267,7 @@ export function CardComments({ cardId }: CardCommentsProps) {
                 </div>
               ) : (
                 <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                  {comment.content}
+                    {renderCommentContent(comment.content)}
                 </p>
               )}
             </div>

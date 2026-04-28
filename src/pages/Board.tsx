@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid, Paperclip, CheckSquare, Pencil, Save, ExternalLink } from 'lucide-react';
+import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid, Paperclip, CheckSquare, Pencil, Save, ExternalLink, Bell, ClipboardList } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -25,6 +25,7 @@ interface Card {
   assignee_id?: string | null;
   due_date?: string | null;
   label?: string | null;
+  reminder_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -99,6 +100,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [cardModalAssigneeId, setCardModalAssigneeId] = useState('');
   const [cardModalDueDate, setCardModalDueDate] = useState('');
   const [cardModalLabel, setCardModalLabel] = useState('');
+  const [cardModalReminderAt, setCardModalReminderAt] = useState('');
   const [renameBoardName, setRenameBoardName] = useState('');
   const [showBoardMenu, setShowBoardMenu] = useState(false);
   const [showListMenu, setShowListMenu] = useState<string | null>(null);
@@ -119,15 +121,18 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [checklistByCard, setChecklistByCard] = useState<Record<string, ChecklistItem[]>>({});
   const [newAttachmentName, setNewAttachmentName] = useState('');
   const [newAttachmentUrl, setNewAttachmentUrl] = useState('');
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [newChecklistTitle, setNewChecklistTitle] = useState('');
   const [quickEditingCardId, setQuickEditingCardId] = useState<string | null>(null);
   const [quickEditTitle, setQuickEditTitle] = useState('');
+  const [checklistMode, setChecklistMode] = useState(false);
 
   const canManageBoard = roleState.isOwner;
   const canManageLists = roleState.isOwner || roleState.isEditor;
   const canManageCards = roleState.isOwner || roleState.isEditor;
   const canInteractWithBoard = !loadingRole && (canManageLists || canManageCards);
   const permissionMessage = `You cannot edit this board because your role is ${roleState.role === 'viewer' ? 'Viewer' : 'not allowed'}.`;
+  const checklistModeStorageKey = `taskd:board:${boardId}:checklist-mode`;
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -191,6 +196,15 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   useEffect(() => {
     loadRole();
   }, [boardId]);
+
+  useEffect(() => {
+    const savedValue = window.localStorage.getItem(checklistModeStorageKey);
+    setChecklistMode(savedValue === 'true');
+  }, [checklistModeStorageKey]);
+
+  useEffect(() => {
+    window.localStorage.setItem(checklistModeStorageKey, String(checklistMode));
+  }, [checklistMode, checklistModeStorageKey]);
 
   useEffect(() => {
     loadBoardData();
@@ -532,6 +546,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         assignee_id: cardModalAssigneeId || null,
         due_date: cardModalDueDate || null,
         label: cardModalLabel.trim() || null,
+        reminder_at: cardModalReminderAt ? new Date(cardModalReminderAt).toISOString() : null,
       })
       .eq('id', selectedCard.id);
 
@@ -543,7 +558,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     setCards(
       cards.map((c) =>
         c.id === selectedCard.id
-          ? { ...c, title: cardModalTitle, description: cardModalDescription, priority: cardModalPriority, assignee_id: cardModalAssigneeId || null, due_date: cardModalDueDate || null, label: cardModalLabel.trim() || null }
+          ? { ...c, title: cardModalTitle, description: cardModalDescription, priority: cardModalPriority, assignee_id: cardModalAssigneeId || null, due_date: cardModalDueDate || null, label: cardModalLabel.trim() || null, reminder_at: cardModalReminderAt ? new Date(cardModalReminderAt).toISOString() : null }
           : c
       )
     );
@@ -747,6 +762,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     setCardModalAssigneeId(card.assignee_id || '');
     setCardModalDueDate(card.due_date || '');
     setCardModalLabel(card.label || '');
+    setCardModalReminderAt(card.reminder_at ? card.reminder_at.slice(0, 16) : '');
     setNewAttachmentName('');
     setNewAttachmentUrl('');
     setNewChecklistTitle('');
@@ -819,6 +835,82 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       [selectedCard.id]: (attachmentsByCard[selectedCard.id] || []).filter((item) => item.id !== attachmentId),
     });
     showToast('Attachment removed');
+  };
+
+  const uploadAttachmentFile = async (file: File) => {
+    if (!selectedCard || !canManageCards) return;
+
+    setUploadingAttachment(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const path = `${boardId}/${selectedCard.id}/${crypto.randomUUID()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('card-attachments')
+        .upload(path, file, { upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('card-attachments')
+        .getPublicUrl(path);
+
+      const { data, error } = await supabase
+        .from('card_attachments')
+        .insert([{
+          card_id: selectedCard.id,
+          name: file.name,
+          url: publicUrlData.publicUrl,
+          file_type: file.type || file.name.split('.').pop() || null,
+          created_by: currentUserId,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setAttachmentsByCard({
+        ...attachmentsByCard,
+        [selectedCard.id]: [data as CardAttachment, ...(attachmentsByCard[selectedCard.id] || [])],
+      });
+      showToast('File uploaded');
+    } catch (error) {
+      console.error('Error uploading attachment:', error);
+      alert(error instanceof Error ? error.message : 'Failed to upload attachment');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const applyDailyTemplate = async () => {
+    if (!canManageCards || lists.length === 0) return;
+
+    const targetList = lists[0];
+    const listCards = cards.filter((card) => card.list_id === targetList.id);
+    const basePosition = listCards.reduce((max, card) => Math.max(max, card.position), -1) + 1;
+    const today = new Date().toISOString().slice(0, 10);
+    const templateCards = [
+      'Review priorities',
+      'Plan top 3 tasks',
+      'Update progress',
+      'End-of-day wrap-up',
+    ].map((title, index) => ({
+      title,
+      description: `Daily template item for ${today}`,
+      list_id: targetList.id,
+      position: basePosition + index,
+      priority: index === 1 ? 'high' : 'medium',
+      due_date: today,
+      label: 'Daily',
+    }));
+
+    const { data, error } = await supabase.from('cards').insert(templateCards).select();
+    if (error) {
+      console.error('Error applying daily template:', error);
+      return;
+    }
+
+    setCards([...cards, ...((data || []) as Card[])]);
+    showToast('Daily template added');
   };
 
   const addChecklistItem = async () => {
@@ -947,6 +1039,75 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
 
   const getPriorityLabel = (priority: string) => {
     return priority.charAt(0).toUpperCase() + priority.slice(1);
+  };
+
+  const getDoneList = () => lists.find((list) => list.name.trim().toLowerCase() === 'done');
+
+  const getTodoList = () => {
+    const exactTodo = lists.find((list) => list.name.trim().toLowerCase() === 'to do');
+    if (exactTodo) return exactTodo;
+
+    const firstNonDone = lists.find((list) => list.name.trim().toLowerCase() !== 'done');
+    return firstNonDone || lists[0];
+  };
+
+  const toggleChecklistMode = () => {
+    setChecklistMode((current) => !current);
+    setQuickEditingCardId(null);
+    setQuickEditTitle('');
+  };
+
+  const toggleCardDoneStatus = async (card: Card, shouldComplete: boolean) => {
+    if (!canManageCards) return;
+
+    const doneList = getDoneList();
+    const todoList = getTodoList();
+
+    if (!doneList) {
+      alert('Checklist mode needs a "Done" list to move completed tasks.');
+      return;
+    }
+
+    const targetList = shouldComplete ? doneList : todoList;
+    if (!targetList) return;
+    if (card.list_id === targetList.id) return;
+
+    const targetListCards = cards.filter((item) => item.list_id === targetList.id && item.id !== card.id);
+    const nextPosition = targetListCards.reduce((max, item) => Math.max(max, item.position), -1) + 1;
+
+    const { error } = await supabase
+      .from('cards')
+      .update({ list_id: targetList.id, position: nextPosition })
+      .eq('id', card.id);
+
+    if (error) {
+      console.error('Error toggling card checklist mode status:', error);
+      return;
+    }
+
+    const fromList = lists.find((list) => list.id === card.list_id);
+
+    setCards(
+      cards.map((item) =>
+        item.id === card.id ? { ...item, list_id: targetList.id, position: nextPosition } : item
+      )
+    );
+
+    await supabase.from('activities').insert([{
+      board_id: boardId,
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      action: shouldComplete ? 'completed' : 'reopened',
+      entity_type: 'card',
+      entity_id: card.id,
+      metadata: {
+        title: card.title,
+        from_list: fromList?.name,
+        to_list: targetList.name,
+        via: 'checklist_mode',
+      }
+    }]);
+
+    showToast(shouldComplete ? `Moved to ${targetList.name}` : `Moved back to ${targetList.name}`);
   };
 
   const getListCards = (listId: string) => {
@@ -1207,6 +1368,29 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             <option value="none">No due date</option>
           </select>
         </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            onClick={toggleChecklistMode}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-all ${
+              checklistMode
+                ? 'border-success-300 dark:border-success-700 bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-300'
+                : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/60 text-gray-700 dark:text-gray-200 hover:border-primary-300 dark:hover:border-primary-700'
+            }`}
+            title="Toggle checklist mode"
+          >
+            <CheckSquare className="w-4 h-4" />
+            {checklistMode ? 'Checklist mode on' : 'Checklist mode off'}
+          </button>
+          <button
+            onClick={applyDailyTemplate}
+            disabled={!canManageCards}
+            title={!canManageCards ? permissionMessage : 'Add daily planning cards to the first list'}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold ${canManageCards ? 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/50' : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Daily Template
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-x-auto p-6 custom-scrollbar relative z-10" data-board-role={roleState.role ?? 'unknown'} data-can-interact={canInteractWithBoard}>
@@ -1275,29 +1459,45 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                     style={{ animationDelay: `${cardIndex * 30}ms` }}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      {quickEditingCardId === card.id ? (
-                        <input
-                          value={quickEditTitle}
-                          onChange={(e) => setQuickEditTitle(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              void quickUpdateCardTitle(card);
-                            }
-                            if (e.key === 'Escape') {
-                              setQuickEditingCardId(null);
-                              setQuickEditTitle('');
-                            }
-                          }}
-                          className="flex-1 px-2 py-1 rounded-lg bg-white dark:bg-gray-900 border border-primary-300 dark:border-primary-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
-                          autoFocus
-                        />
-                      ) : (
-                        <p className="text-gray-900 dark:text-gray-100 font-medium group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors flex-1">
-                          {card.title}
-                        </p>
-                      )}
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        {checklistMode && (
+                          <input
+                            type="checkbox"
+                            checked={isDoneCard(card)}
+                            disabled={!canManageCards}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              void toggleCardDoneStatus(card, e.target.checked);
+                            }}
+                            title={!canManageCards ? permissionMessage : isDoneCard(card) ? 'Move back from Done' : 'Move to Done'}
+                            className="mt-1 h-4 w-4 rounded border-gray-300 text-success-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        )}
+                        {quickEditingCardId === card.id ? (
+                          <input
+                            value={quickEditTitle}
+                            onChange={(e) => setQuickEditTitle(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void quickUpdateCardTitle(card);
+                              }
+                              if (e.key === 'Escape') {
+                                setQuickEditingCardId(null);
+                                setQuickEditTitle('');
+                              }
+                            }}
+                            className="flex-1 px-2 py-1 rounded-lg bg-white dark:bg-gray-900 border border-primary-300 dark:border-primary-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
+                            autoFocus
+                          />
+                        ) : (
+                          <p className={`font-medium transition-colors flex-1 min-w-0 ${isDoneCard(card) ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100 group-hover:text-primary-600 dark:group-hover:text-primary-400'}`}>
+                            {card.title}
+                          </p>
+                        )}
+                      </div>
                       <span className={`px-2 py-1 rounded-lg text-xs font-semibold border ${getPriorityColor(card.priority || 'medium')} whitespace-nowrap`}>
                         {getPriorityLabel(card.priority || 'medium')}
                       </span>
@@ -1372,6 +1572,12 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${isOverdue(card) ? 'bg-danger-100 text-danger-700 dark:bg-danger-900/30 dark:text-danger-300' : 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-300'}`}>
                           <Calendar className="w-3 h-3" />
                           {formatDueDate(card.due_date)}
+                        </span>
+                      )}
+                      {card.reminder_at && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-xs font-medium text-primary-700 dark:text-primary-300">
+                          <Bell className="w-3 h-3" />
+                          {new Date(card.reminder_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                         </span>
                       )}
                       {card.label && (
@@ -1621,7 +1827,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Assignee</label>
                 <select value={cardModalAssigneeId} onChange={(e) => setCardModalAssigneeId(e.target.value)} disabled={roleState.isViewer} className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-gray-900 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">
@@ -1633,6 +1839,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
               </div>
               <Input label="Due Date" type="date" value={cardModalDueDate} onChange={(e) => setCardModalDueDate(e.target.value)} disabled={roleState.isViewer} />
               <Input label="Label" value={cardModalLabel} onChange={(e) => setCardModalLabel(e.target.value)} placeholder="Design, Bug, Urgent" disabled={roleState.isViewer} />
+              <Input label="Reminder" type="datetime-local" value={cardModalReminderAt} onChange={(e) => setCardModalReminderAt(e.target.value)} disabled={roleState.isViewer} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1751,6 +1958,19 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                       />
                       <Button onClick={addAttachment} variant="secondary" size="sm" disabled={!canManageCards} title={!canManageCards ? permissionMessage : 'Add attachment'}>Add</Button>
                     </div>
+                    <label className={`block rounded-lg border border-dashed px-3 py-3 text-center text-sm font-semibold ${canManageCards ? 'border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`} title={!canManageCards ? permissionMessage : 'Upload file'}>
+                      {uploadingAttachment ? 'Uploading...' : 'Upload file'}
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={!canManageCards || uploadingAttachment}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void uploadAttachmentFile(file);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
                   </div>
                 </div>
               </div>
@@ -1817,7 +2037,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           {/* Right Column - Comments */}
           <div className="w-96 border-l border-gray-200 dark:border-gray-700 pl-6 overflow-y-auto custom-scrollbar">
             {selectedCard && (
-              <CardComments cardId={selectedCard.id} />
+              <CardComments cardId={selectedCard.id} boardMembers={boardMembers} />
             )}
           </div>
         </div>
