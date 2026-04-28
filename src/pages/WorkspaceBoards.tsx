@@ -61,6 +61,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const [loadingBoards, setLoadingBoards] = useState(true);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'boards' | 'activity'>('dashboard');
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
   const [showRenameBoardModal, setShowRenameBoardModal] = useState(false);
@@ -389,6 +390,25 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     return `${activity.action.charAt(0).toUpperCase() + activity.action.slice(1)} ${target}`;
   };
 
+  const navButtonClass = (section: 'dashboard' | 'boards' | 'activity') =>
+    `w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-colors ${
+      activeSection === section
+        ? 'bg-white/[0.07] text-white border border-white/5'
+        : 'text-gray-400 hover:text-white hover:bg-white/[0.05]'
+    }`;
+
+  const sectionTitle = activeSection === 'boards'
+    ? 'Boards'
+    : activeSection === 'activity'
+      ? 'Activity'
+      : workspaceName;
+
+  const sectionSubtitle = activeSection === 'boards'
+    ? 'Open, rename, and review progress across this workspace.'
+    : activeSection === 'activity'
+      ? 'Recent work history across the boards in this workspace.'
+      : 'Organize your work and boost productivity';
+
   const SkeletonDashboard = () => (
     <div className="space-y-8 animate-fade-in">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -421,15 +441,15 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           <h2 className="text-xl font-bold text-white truncate mt-2">{workspaceName || 'Workspace'}</h2>
         </div>
         <nav className="space-y-1">
-          <button className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/[0.07] text-white border border-white/5 text-sm font-semibold">
+          <button className={navButtonClass('dashboard')} onClick={() => setActiveSection('dashboard')}>
             <Home className="w-4 h-4 text-primary-300" />
             Dashboard
           </button>
-          <button className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={() => document.getElementById('boards-grid')?.scrollIntoView({ behavior: 'smooth' })}>
+          <button className={navButtonClass('boards')} onClick={() => setActiveSection('boards')}>
             <LayoutGrid className="w-4 h-4" />
             Boards
           </button>
-          <button className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={() => document.getElementById('manager-activity')?.scrollIntoView({ behavior: 'smooth' })}>
+          <button className={navButtonClass('activity')} onClick={() => setActiveSection('activity')}>
             <Activity className="w-4 h-4" />
             Activity
           </button>
@@ -465,7 +485,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           <div className="flex items-center gap-4">
             <button
               onClick={onBack}
-              className="flex items-center gap-2 text-gray-300 hover:text-white transition-all duration-200 hover:scale-105 active:scale-95"
+              className="lg:hidden flex items-center gap-2 text-gray-300 hover:text-white transition-all duration-200 hover:scale-105 active:scale-95"
             >
               <div className="p-2 rounded-xl hover:bg-white/[0.06] transition-all">
                 <ArrowLeft className="w-5 h-5" />
@@ -519,11 +539,11 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           <div className="flex items-center justify-between mb-8 animate-fade-in-down">
             <div>
               <h1 className="text-4xl font-bold text-white mb-2">
-                {workspaceName}
+                {sectionTitle}
               </h1>
-              <p className="text-gray-500">Organize your work and boost productivity</p>
+              <p className="text-gray-500">{sectionSubtitle}</p>
             </div>
-            {filteredBoards.length > 0 && (
+            {activeSection !== 'activity' && filteredBoards.length > 0 && (
               <Button
                 onClick={() => setShowNewBoardModal(true)}
                 variant="primary"
@@ -536,7 +556,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
           {loadingBoards ? (
             <SkeletonDashboard />
-          ) : boards.length > 0 && (
+          ) : activeSection === 'dashboard' && boards.length > 0 && (
             <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 mb-8 animate-fade-in-up">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
@@ -565,7 +585,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                 })}
               </div>
 
-              <div id="manager-activity" className="surface-card rounded-2xl p-5">
+              <div className="surface-card rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Activity className="w-5 h-5 text-primary-300" />
                   <h2 className="text-sm font-bold text-white">Manager Activity</h2>
@@ -589,7 +609,36 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
             </div>
           )}
 
-          {!loadingBoards && filteredBoards.length === 0 ? (
+          {!loadingBoards && activeSection === 'activity' && (
+            <div className="surface-card rounded-2xl p-6 animate-fade-in-up">
+              <div className="flex items-center gap-2 mb-5">
+                <Activity className="w-5 h-5 text-primary-300" />
+                <h2 className="text-lg font-bold text-white">Manager Activity</h2>
+              </div>
+              {recentActivities.length === 0 ? (
+                <div className="py-16 text-center">
+                  <Activity className="w-10 h-10 text-gray-700 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">No recent activity</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {recentActivities.map((activity) => (
+                    <div key={activity.id} className="py-4 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-100">{formatActivityMessage(activity)}</p>
+                        <p className="text-xs text-gray-500 mt-1">{activity.board_name}</p>
+                      </div>
+                      <span className="text-xs text-gray-600 tabular-nums">
+                        {new Date(activity.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loadingBoards && activeSection !== 'activity' && filteredBoards.length === 0 ? (
             <div className="text-center py-20 animate-fade-in-up">
               <div className="relative inline-block mb-6">
                 <div className="w-24 h-24 rounded-2xl bg-white/[0.04] border border-white/5 flex items-center justify-center">
@@ -611,7 +660,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                 Create Your First Board
               </Button>
             </div>
-          ) : (
+          ) : activeSection !== 'activity' ? (
             <div id="boards-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
               {filteredBoards.map((board, index) => {
                 const stats = boardStats[board.id] || { total: 0, completed: 0, overdue: 0, urgent: 0 };
@@ -705,7 +754,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                 );
               })}
             </div>
-          )}
+          ) : null}
         </div>
       </main>
       </div>
