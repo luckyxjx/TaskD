@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid } from 'lucide-react';
+import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid, Paperclip, CheckSquare, Pencil, Save, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -34,6 +34,23 @@ interface BoardMember {
   user_id: string;
   role: 'owner' | 'editor' | 'viewer';
   email?: string;
+}
+
+interface CardAttachment {
+  id: string;
+  card_id: string;
+  name: string;
+  url: string;
+  file_type: string | null;
+  created_at: string;
+}
+
+interface ChecklistItem {
+  id: string;
+  card_id: string;
+  title: string;
+  completed: boolean;
+  position: number;
 }
 
 interface RoleState {
@@ -98,6 +115,13 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [accessDenied, setAccessDenied] = useState(false);
   const [boardError, setBoardError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [attachmentsByCard, setAttachmentsByCard] = useState<Record<string, CardAttachment[]>>({});
+  const [checklistByCard, setChecklistByCard] = useState<Record<string, ChecklistItem[]>>({});
+  const [newAttachmentName, setNewAttachmentName] = useState('');
+  const [newAttachmentUrl, setNewAttachmentUrl] = useState('');
+  const [newChecklistTitle, setNewChecklistTitle] = useState('');
+  const [quickEditingCardId, setQuickEditingCardId] = useState<string | null>(null);
+  const [quickEditTitle, setQuickEditTitle] = useState('');
 
   const canManageBoard = roleState.isOwner;
   const canManageLists = roleState.isOwner || roleState.isEditor;
@@ -305,8 +329,54 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       .order('position');
 
     setCards(cardsData || []);
+    await loadCardMetadata((cardsData || []).map((card) => card.id));
     await loadBoardMembers();
     setLoadingBoard(false);
+  };
+
+  const loadCardMetadata = async (cardIds: string[]) => {
+    if (cardIds.length === 0) {
+      setAttachmentsByCard({});
+      setChecklistByCard({});
+      return;
+    }
+
+    const [{ data: attachments, error: attachmentsError }, { data: checklist, error: checklistError }] = await Promise.all([
+      supabase
+        .from('card_attachments')
+        .select('*')
+        .in('card_id', cardIds)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('card_checklist_items')
+        .select('*')
+        .in('card_id', cardIds)
+        .order('position'),
+    ]);
+
+    if (attachmentsError) {
+      console.error('Error loading attachments:', attachmentsError);
+      setAttachmentsByCard({});
+    } else {
+      setAttachmentsByCard(
+        ((attachments || []) as CardAttachment[]).reduce<Record<string, CardAttachment[]>>((acc, attachment) => {
+          acc[attachment.card_id] = [...(acc[attachment.card_id] || []), attachment];
+          return acc;
+        }, {})
+      );
+    }
+
+    if (checklistError) {
+      console.error('Error loading checklist:', checklistError);
+      setChecklistByCard({});
+    } else {
+      setChecklistByCard(
+        ((checklist || []) as ChecklistItem[]).reduce<Record<string, ChecklistItem[]>>((acc, item) => {
+          acc[item.card_id] = [...(acc[item.card_id] || []), item];
+          return acc;
+        }, {})
+      );
+    }
   };
 
   const loadBoardMembers = async () => {
@@ -354,7 +424,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         entity_id: data.id,
         metadata: { name: data.name }
       }]);
-      showToast('Card created');
+      showToast('List created');
     }
   };
 
@@ -445,6 +515,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         entity_id: data.id,
         metadata: { title: data.title, assignee_id: data.assignee_id, due_date: data.due_date, label: data.label }
       }]);
+      showToast('Card created');
     }
   };
 
@@ -676,7 +747,143 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     setCardModalAssigneeId(card.assignee_id || '');
     setCardModalDueDate(card.due_date || '');
     setCardModalLabel(card.label || '');
+    setNewAttachmentName('');
+    setNewAttachmentUrl('');
+    setNewChecklistTitle('');
     setShowCardModal(true);
+  };
+
+  const quickUpdateCardTitle = async (card: Card) => {
+    if (!canManageCards || !quickEditTitle.trim()) return;
+
+    const { error } = await supabase
+      .from('cards')
+      .update({ title: quickEditTitle.trim() })
+      .eq('id', card.id);
+
+    if (error) {
+      console.error('Error quick editing card:', error);
+      return;
+    }
+
+    setCards(cards.map((item) => item.id === card.id ? { ...item, title: quickEditTitle.trim() } : item));
+    setQuickEditingCardId(null);
+    setQuickEditTitle('');
+    showToast('Card title updated');
+  };
+
+  const addAttachment = async () => {
+    if (!selectedCard || !canManageCards || !newAttachmentUrl.trim()) return;
+
+    const safeUrl = newAttachmentUrl.trim();
+    const name = newAttachmentName.trim() || safeUrl.replace(/^https?:\/\//, '').split('/')[0] || 'Attachment';
+    const { data, error } = await supabase
+      .from('card_attachments')
+      .insert([{
+        card_id: selectedCard.id,
+        name,
+        url: safeUrl,
+        file_type: name.includes('.') ? name.split('.').pop()?.toLowerCase() : null,
+        created_by: currentUserId,
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding attachment:', error);
+      return;
+    }
+
+    if (data) {
+      setAttachmentsByCard({
+        ...attachmentsByCard,
+        [selectedCard.id]: [data as CardAttachment, ...(attachmentsByCard[selectedCard.id] || [])],
+      });
+      setNewAttachmentName('');
+      setNewAttachmentUrl('');
+      showToast('Attachment added');
+    }
+  };
+
+  const deleteAttachment = async (attachmentId: string) => {
+    if (!selectedCard || !canManageCards) return;
+
+    const { error } = await supabase.from('card_attachments').delete().eq('id', attachmentId);
+    if (error) {
+      console.error('Error deleting attachment:', error);
+      return;
+    }
+
+    setAttachmentsByCard({
+      ...attachmentsByCard,
+      [selectedCard.id]: (attachmentsByCard[selectedCard.id] || []).filter((item) => item.id !== attachmentId),
+    });
+    showToast('Attachment removed');
+  };
+
+  const addChecklistItem = async () => {
+    if (!selectedCard || !canManageCards || !newChecklistTitle.trim()) return;
+
+    const currentItems = checklistByCard[selectedCard.id] || [];
+    const { data, error } = await supabase
+      .from('card_checklist_items')
+      .insert([{
+        card_id: selectedCard.id,
+        title: newChecklistTitle.trim(),
+        position: currentItems.length,
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding checklist item:', error);
+      return;
+    }
+
+    if (data) {
+      setChecklistByCard({
+        ...checklistByCard,
+        [selectedCard.id]: [...currentItems, data as ChecklistItem],
+      });
+      setNewChecklistTitle('');
+      showToast('Checklist item added');
+    }
+  };
+
+  const toggleChecklistItem = async (item: ChecklistItem) => {
+    if (!canManageCards) return;
+
+    const { error } = await supabase
+      .from('card_checklist_items')
+      .update({ completed: !item.completed })
+      .eq('id', item.id);
+
+    if (error) {
+      console.error('Error updating checklist item:', error);
+      return;
+    }
+
+    setChecklistByCard({
+      ...checklistByCard,
+      [item.card_id]: (checklistByCard[item.card_id] || []).map((entry) =>
+        entry.id === item.id ? { ...entry, completed: !entry.completed } : entry
+      ),
+    });
+  };
+
+  const deleteChecklistItem = async (item: ChecklistItem) => {
+    if (!canManageCards) return;
+
+    const { error } = await supabase.from('card_checklist_items').delete().eq('id', item.id);
+    if (error) {
+      console.error('Error deleting checklist item:', error);
+      return;
+    }
+
+    setChecklistByCard({
+      ...checklistByCard,
+      [item.card_id]: (checklistByCard[item.card_id] || []).filter((entry) => entry.id !== item.id),
+    });
   };
 
   const getAssigneeEmail = (assigneeId?: string | null) => {
@@ -1057,18 +1264,87 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                     style={{ animationDelay: `${cardIndex * 30}ms` }}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="text-gray-900 dark:text-gray-100 font-medium group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors flex-1">
-                        {card.title}
-                      </p>
+                      {quickEditingCardId === card.id ? (
+                        <input
+                          value={quickEditTitle}
+                          onChange={(e) => setQuickEditTitle(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void quickUpdateCardTitle(card);
+                            }
+                            if (e.key === 'Escape') {
+                              setQuickEditingCardId(null);
+                              setQuickEditTitle('');
+                            }
+                          }}
+                          className="flex-1 px-2 py-1 rounded-lg bg-white dark:bg-gray-900 border border-primary-300 dark:border-primary-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
+                          autoFocus
+                        />
+                      ) : (
+                        <p className="text-gray-900 dark:text-gray-100 font-medium group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors flex-1">
+                          {card.title}
+                        </p>
+                      )}
                       <span className={`px-2 py-1 rounded-lg text-xs font-semibold border ${getPriorityColor(card.priority || 'medium')} whitespace-nowrap`}>
                         {getPriorityLabel(card.priority || 'medium')}
                       </span>
                     </div>
+                    {canManageCards && (
+                      <div className="flex items-center gap-1 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {quickEditingCardId === card.id ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void quickUpdateCardTitle(card);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs font-semibold"
+                          >
+                            <Save className="w-3 h-3" />
+                            Save
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQuickEditingCardId(card.id);
+                              setQuickEditTitle(card.title);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/70 dark:bg-gray-900/70 text-gray-600 dark:text-gray-300 text-xs font-semibold"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Quick edit
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {card.description && (
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 line-clamp-2">
                         {card.description}
                       </p>
                     )}
+                    {(() => {
+                      const checklist = checklistByCard[card.id] || [];
+                      const attachments = attachmentsByCard[card.id] || [];
+                      const completed = checklist.filter((item) => item.completed).length;
+                      return (checklist.length > 0 || attachments.length > 0) ? (
+                        <div className="flex items-center gap-2 flex-wrap mt-3 text-xs text-gray-500 dark:text-gray-400">
+                          {checklist.length > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/60 dark:bg-gray-900/60">
+                              <CheckSquare className="w-3 h-3" />
+                              {completed}/{checklist.length}
+                            </span>
+                          )}
+                          {attachments.length > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/60 dark:bg-gray-900/60">
+                              <Paperclip className="w-3 h-3" />
+                              {attachments.length}
+                            </span>
+                          )}
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="flex items-center gap-2 flex-wrap mt-3">
                       {card.assignee_id && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 max-w-full">
@@ -1353,6 +1629,111 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                 placeholder="Add a more detailed description..."
               />
             </div>
+
+            {selectedCard && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckSquare className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Checklist</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {(checklistByCard[selectedCard.id] || []).length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 py-3">No subtasks yet</p>
+                    ) : (
+                      (checklistByCard[selectedCard.id] || []).map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 group">
+                          <input
+                            type="checkbox"
+                            checked={item.completed}
+                            disabled={!canManageCards}
+                            onChange={() => toggleChecklistItem(item)}
+                            className="w-4 h-4 rounded border-gray-300 text-primary-600"
+                          />
+                          <span className={`flex-1 text-sm ${item.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {item.title}
+                          </span>
+                          {canManageCards && (
+                            <button
+                              onClick={() => deleteChecklistItem(item)}
+                              className="opacity-0 group-hover:opacity-100 text-xs text-danger-600 dark:text-danger-400"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {canManageCards && (
+                    <div className="flex gap-2 mt-4">
+                      <input
+                        value={newChecklistTitle}
+                        onChange={(e) => setNewChecklistTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addChecklistItem()}
+                        placeholder="Add subtask..."
+                        className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
+                      />
+                      <Button onClick={addChecklistItem} variant="secondary" size="sm">Add</Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Paperclip className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Attachments</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {(attachmentsByCard[selectedCard.id] || []).length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 py-3">No attachments yet</p>
+                    ) : (
+                      (attachmentsByCard[selectedCard.id] || []).map((attachment) => (
+                        <div key={attachment.id} className="flex items-center gap-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 group">
+                          <div className="w-9 h-9 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-300">
+                            <Paperclip className="w-4 h-4" />
+                          </div>
+                          <a href={attachment.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{attachment.name}</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                              Preview <ExternalLink className="w-3 h-3" />
+                            </span>
+                          </a>
+                          {canManageCards && (
+                            <button
+                              onClick={() => deleteAttachment(attachment.id)}
+                              className="opacity-0 group-hover:opacity-100 text-xs text-danger-600 dark:text-danger-400"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {canManageCards && (
+                    <div className="space-y-2 mt-4">
+                      <input
+                        value={newAttachmentName}
+                        onChange={(e) => setNewAttachmentName(e.target.value)}
+                        placeholder="Attachment name"
+                        className="w-full px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={newAttachmentUrl}
+                          onChange={(e) => setNewAttachmentUrl(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addAttachment()}
+                          placeholder="https://..."
+                          className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
+                        />
+                        <Button onClick={addAttachment} variant="secondary" size="sm">Add</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons - Only visible to owners and editors */}
             {!loadingRole && canManageCards && (

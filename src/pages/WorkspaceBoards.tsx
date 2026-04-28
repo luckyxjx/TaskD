@@ -44,6 +44,16 @@ interface CardStatsRow {
   due_date?: string | null;
 }
 
+interface WorkspaceCardSearchResult {
+  id: string;
+  title: string;
+  description: string | null;
+  label: string | null;
+  due_date: string | null;
+  board_id: string;
+  board_name: string;
+}
+
 interface WorkspaceBoardsProps {
   workspaceId: string;
   onBoardClick: (boardId: string) => void;
@@ -58,6 +68,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const [boards, setBoards] = useState<Board[]>([]);
   const [boardStats, setBoardStats] = useState<BoardStats>({});
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [workspaceCards, setWorkspaceCards] = useState<WorkspaceCardSearchResult[]>([]);
   const [loadingBoards, setLoadingBoards] = useState(true);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -270,6 +281,60 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
     setBoardStats(stats);
     loadRecentActivities();
+    loadWorkspaceCards();
+  };
+
+  const loadWorkspaceCards = async () => {
+    if (boards.length === 0) {
+      setWorkspaceCards([]);
+      return;
+    }
+
+    const boardNames = new Map(boards.map((board) => [board.id, board.name]));
+    const { data: lists, error: listsError } = await supabase
+      .from('lists')
+      .select('id, board_id')
+      .in('board_id', boards.map((board) => board.id));
+
+    if (listsError || !lists || lists.length === 0) {
+      if (listsError) console.error('Error loading lists for global search:', listsError);
+      setWorkspaceCards([]);
+      return;
+    }
+
+    const listBoardMap = new Map((lists as { id: string; board_id: string }[]).map((list) => [list.id, list.board_id]));
+    const { data: cardsData, error: cardsError } = await supabase
+      .from('cards')
+      .select('id, list_id, title, description, label, due_date')
+      .in('list_id', lists.map((list) => list.id))
+      .order('updated_at', { ascending: false })
+      .limit(80);
+
+    if (cardsError) {
+      console.error('Error loading global card search:', cardsError);
+      setWorkspaceCards([]);
+      return;
+    }
+
+    setWorkspaceCards(((cardsData || []) as Array<{
+      id: string;
+      list_id: string;
+      title: string;
+      description: string | null;
+      label: string | null;
+      due_date: string | null;
+    }>).map((card) => {
+      const boardId = listBoardMap.get(card.list_id) || '';
+      return {
+        id: card.id,
+        title: card.title,
+        description: card.description,
+        label: card.label,
+        due_date: card.due_date,
+        board_id: boardId,
+        board_name: boardNames.get(boardId) || 'Board',
+      };
+    }));
   };
 
   const loadRecentActivities = async () => {
@@ -284,7 +349,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       .select('id, board_id, action, entity_type, metadata, created_at')
       .in('board_id', boards.map((board) => board.id))
       .order('created_at', { ascending: false })
-      .limit(6);
+      .limit(40);
 
     if (error) {
       console.error('Error loading manager activity:', error);
@@ -389,6 +454,33 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     if (activity.action === 'moved') return `Moved ${target} to ${activity.metadata?.to_list || 'another list'}`;
     return `${activity.action.charAt(0).toUpperCase() + activity.action.slice(1)} ${target}`;
   };
+
+  const activityCountsByDay = Array.from({ length: 7 }).map((_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    const key = date.toISOString().slice(0, 10);
+    const count = recentActivities.filter((activity) => activity.created_at.slice(0, 10) === key).length;
+    return {
+      key,
+      label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+      count,
+    };
+  });
+  const maxActivityCount = Math.max(1, ...activityCountsByDay.map((day) => day.count));
+
+  const globalSearchQuery = searchQuery.trim().toLowerCase();
+  const globalBoardResults = globalSearchQuery
+    ? boards.filter((board) => board.name.toLowerCase().includes(globalSearchQuery)).slice(0, 4)
+    : [];
+  const globalCardResults = globalSearchQuery
+    ? workspaceCards.filter((card) => {
+      return card.title.toLowerCase().includes(globalSearchQuery)
+        || (card.description || '').toLowerCase().includes(globalSearchQuery)
+        || (card.label || '').toLowerCase().includes(globalSearchQuery)
+        || card.board_name.toLowerCase().includes(globalSearchQuery)
+        || (card.due_date || '').includes(globalSearchQuery);
+    }).slice(0, 6)
+    : [];
 
   const navButtonClass = (section: 'dashboard' | 'boards' | 'activity') =>
     `w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-colors ${
@@ -499,11 +591,53 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-5 h-5 z-10 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search boards..."
+                placeholder="Search boards, cards, labels..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-12 pr-4 py-3 bg-white/[0.04] border border-white/5 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none backdrop-blur-sm transition-all duration-200 w-64 text-gray-100 placeholder:text-gray-500"
               />
+              {globalSearchQuery && (
+                <div className="absolute right-0 top-full mt-2 w-[420px] max-h-[420px] overflow-y-auto surface-card rounded-xl p-3 z-30">
+                  <div className="flex items-center justify-between px-2 pb-2">
+                    <span className="text-xs font-bold uppercase text-gray-500">Global search</span>
+                    <span className="text-xs text-gray-600 tabular-nums">{globalBoardResults.length + globalCardResults.length} results</span>
+                  </div>
+                  {globalBoardResults.length === 0 && globalCardResults.length === 0 ? (
+                    <p className="text-sm text-gray-500 px-2 py-6 text-center">No matching boards or cards</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {globalBoardResults.map((board) => (
+                        <button
+                          key={board.id}
+                          onClick={() => {
+                            setSearchQuery('');
+                            onBoardClick(board.id);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.06]"
+                        >
+                          <span className="block text-sm font-semibold text-white">{board.name}</span>
+                          <span className="text-xs text-gray-500">Board</span>
+                        </button>
+                      ))}
+                      {globalCardResults.map((card) => (
+                        <button
+                          key={card.id}
+                          onClick={() => {
+                            setSearchQuery('');
+                            onBoardClick(card.board_id);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.06]"
+                        >
+                          <span className="block text-sm font-semibold text-white">{card.title}</span>
+                          <span className="text-xs text-gray-500">
+                            Card in {card.board_name}{card.label ? ` • ${card.label}` : ''}{card.due_date ? ` • due ${card.due_date}` : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {onInvitationsClick && (
@@ -590,6 +724,18 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                   <Activity className="w-5 h-5 text-primary-300" />
                   <h2 className="text-sm font-bold text-white">Manager Activity</h2>
                 </div>
+                <div className="flex items-end gap-2 h-20 mb-5 border-b border-white/5 pb-4">
+                  {activityCountsByDay.map((day) => (
+                    <div key={day.key} className="flex-1 flex flex-col items-center justify-end gap-2">
+                      <div
+                        className="w-full rounded-t-lg bg-primary-500/70 min-h-1"
+                        style={{ height: `${Math.max(6, (day.count / maxActivityCount) * 56)}px` }}
+                        title={`${day.count} activities`}
+                      />
+                      <span className="text-[10px] text-gray-600">{day.label}</span>
+                    </div>
+                  ))}
+                </div>
                 {recentActivities.length === 0 ? (
                   <div className="py-8 text-center">
                     <Activity className="w-8 h-8 text-gray-700 mx-auto mb-3" />
@@ -597,7 +743,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {recentActivities.map((activity) => (
+                    {recentActivities.slice(0, 6).map((activity) => (
                       <div key={activity.id} className="border-l border-white/10 pl-3">
                         <p className="text-sm font-medium text-gray-100 line-clamp-1">{formatActivityMessage(activity)}</p>
                         <p className="text-xs text-gray-500">{activity.board_name}</p>
@@ -614,6 +760,24 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               <div className="flex items-center gap-2 mb-5">
                 <Activity className="w-5 h-5 text-primary-300" />
                 <h2 className="text-lg font-bold text-white">Manager Activity</h2>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-semibold text-gray-300">Activity count by day</p>
+                  <p className="text-xs text-gray-600">Last 7 days</p>
+                </div>
+                <div className="flex items-end gap-3 h-32">
+                  {activityCountsByDay.map((day) => (
+                    <div key={day.key} className="flex-1 flex flex-col items-center justify-end gap-2">
+                      <div
+                        className="w-full rounded-t-xl bg-gradient-to-t from-primary-600 to-accent-500 min-h-1"
+                        style={{ height: `${Math.max(6, (day.count / maxActivityCount) * 96)}px` }}
+                      />
+                      <span className="text-xs text-gray-500">{day.label}</span>
+                      <span className="text-xs tabular-nums text-gray-400">{day.count}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               {recentActivities.length === 0 ? (
                 <div className="py-16 text-center">
