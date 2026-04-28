@@ -77,8 +77,8 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
       `)
       .in('id', boardIds);
 
-    console.log('📋 Boards data:', boardsData);
-    console.log('❌ Boards error:', boardsError);
+    console.log(' Boards data:', boardsData);
+    console.log(' Boards error:', boardsError);
 
     if (boardsError) {
       console.error('Error loading boards:', boardsError);
@@ -122,7 +122,7 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
       })
     );
 
-    console.log('🎉 Final shared boards with details:', sharedBoardsWithDetails);
+    console.log('Final shared boards with details:', sharedBoardsWithDetails);
     setSharedBoards(sharedBoardsWithDetails);
     setLoading(false);
   };

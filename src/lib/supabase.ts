@@ -91,6 +91,10 @@ export type Database = {
           title: string;
           description: string | null;
           position: number;
+          priority?: 'low' | 'medium' | 'high' | 'urgent';
+          assignee_id: string | null;
+          due_date: string | null;
+          label: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -100,6 +104,10 @@ export type Database = {
           title: string;
           description?: string | null;
           position?: number;
+          priority?: 'low' | 'medium' | 'high' | 'urgent';
+          assignee_id?: string | null;
+          due_date?: string | null;
+          label?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -109,6 +117,10 @@ export type Database = {
           title?: string;
           description?: string | null;
           position?: number;
+          priority?: 'low' | 'medium' | 'high' | 'urgent';
+          assignee_id?: string | null;
+          due_date?: string | null;
+          label?: string | null;
           created_at?: string;
           updated_at?: string;
         };

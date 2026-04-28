@@ -3,7 +3,7 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { supabase } from '../lib/supabase';
-import { UserPlusIcon, UsersIcon } from '../icons';
+import { UserPlusIcon } from '../icons';
 
 interface ShareWorkspaceModalProps {
   isOpen: boolean;
@@ -81,9 +81,9 @@ export function ShareWorkspaceModal({ isOpen, onClose, workspaceId, workspaceNam
       alert(`Invitation sent to ${email}!`);
       setEmail('');
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error inviting user:', error);
-      alert(error.message || 'Failed to send invitation');
+      alert(error instanceof Error ? error.message : 'Failed to send invitation');
     } finally {
       setLoading(false);
     }

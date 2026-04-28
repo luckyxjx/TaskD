@@ -24,6 +24,10 @@ interface SharedBoard {
   workspace_name?: string;
 }
 
+interface InvitationPayload {
+  email?: string | null;
+}
+
 interface WorkspacesProps {
   onWorkspaceClick: (workspaceId: string) => void;
   onBoardClick?: (boardId: string) => void;
@@ -66,7 +70,7 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
           schema: 'public',
           table: 'board_invitations'
         }, (payload) => {
-          const invitation: any = payload.new || payload.old;
+          const invitation = (payload.new || payload.old) as InvitationPayload | null;
           if (invitation && invitation.email === user.email) {
             loadPendingInvitations();
           }
@@ -81,7 +85,7 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
           schema: 'public',
           table: 'workspace_invitations'
         }, (payload) => {
-          const invitation: any = payload.new || payload.old;
+          const invitation = (payload.new || payload.old) as InvitationPayload | null;
           if (invitation && invitation.email === user.email) {
             loadPendingInvitations();
           }

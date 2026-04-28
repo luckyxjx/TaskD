@@ -35,6 +35,11 @@ interface InvitationsProps {
   onWorkspaceClick?: (workspaceId: string) => void;
 }
 
+interface RealtimeInvitationRow {
+  id?: string;
+  accepted?: boolean;
+}
+
 export function Invitations({ onBack, onBoardClick, onWorkspaceClick }: InvitationsProps) {
   const [boardInvitations, setBoardInvitations] = useState<BoardInvitation[]>([]);
   const [workspaceInvitations, setWorkspaceInvitations] = useState<WorkspaceInvitation[]>([]);
@@ -54,11 +59,11 @@ export function Invitations({ onBack, onBoardClick, onWorkspaceClick }: Invitati
       }, (payload) => {
         // Only reload if it's a new invitation or update to unaccepted invitation
         if (payload.eventType === 'INSERT' || 
-            (payload.eventType === 'UPDATE' && !(payload.new as any)?.accepted)) {
+            (payload.eventType === 'UPDATE' && !(payload.new as RealtimeInvitationRow)?.accepted)) {
           loadInvitations();
         } else if (payload.eventType === 'DELETE') {
           // Remove from local state
-          setBoardInvitations(prev => prev.filter(inv => inv.id !== (payload.old as any)?.id));
+          setBoardInvitations(prev => prev.filter(inv => inv.id !== (payload.old as RealtimeInvitationRow)?.id));
         }
       })
       .subscribe();
@@ -73,11 +78,11 @@ export function Invitations({ onBack, onBoardClick, onWorkspaceClick }: Invitati
       }, (payload) => {
         // Only reload if it's a new invitation or update to unaccepted invitation
         if (payload.eventType === 'INSERT' || 
-            (payload.eventType === 'UPDATE' && !(payload.new as any)?.accepted)) {
+            (payload.eventType === 'UPDATE' && !(payload.new as RealtimeInvitationRow)?.accepted)) {
           loadInvitations();
         } else if (payload.eventType === 'DELETE') {
           // Remove from local state
-          setWorkspaceInvitations(prev => prev.filter(inv => inv.id !== (payload.old as any)?.id));
+          setWorkspaceInvitations(prev => prev.filter(inv => inv.id !== (payload.old as RealtimeInvitationRow)?.id));
         }
       })
       .subscribe();

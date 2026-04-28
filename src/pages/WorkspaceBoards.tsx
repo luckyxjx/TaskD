@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, ArrowLeft, Plus, LayoutGrid, Sparkles } from 'lucide-react';
+import { Search, User, ArrowLeft, Plus, LayoutGrid, Sparkles, CheckCircle2, Clock, AlertTriangle, Activity } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -18,7 +18,30 @@ interface BoardStats {
   [boardId: string]: {
     total: number;
     completed: number;
+    overdue: number;
+    urgent: number;
   };
+}
+
+interface RecentActivity {
+  id: string;
+  board_id: string;
+  action: string;
+  entity_type: string;
+  metadata: { title?: string; name?: string; to_list?: string } | null;
+  created_at: string;
+  board_name?: string;
+}
+
+interface InvitationPayload {
+  email?: string | null;
+}
+
+interface CardStatsRow {
+  id: string;
+  list_id: string;
+  priority?: string | null;
+  due_date?: string | null;
 }
 
 interface WorkspaceBoardsProps {
@@ -34,6 +57,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const [workspaceName, setWorkspaceName] = useState('');
   const [boards, setBoards] = useState<Board[]>([]);
   const [boardStats, setBoardStats] = useState<BoardStats>({});
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
@@ -58,7 +82,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           schema: 'public',
           table: 'board_invitations'
         }, (payload) => {
-          const invitation: any = payload.new || payload.old;
+          const invitation = (payload.new || payload.old) as InvitationPayload | null;
           if (invitation && invitation.email === user.email) {
             loadPendingInvitations();
           }
@@ -73,7 +97,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           schema: 'public',
           table: 'workspace_invitations'
         }, (payload) => {
-          const invitation: any = payload.new || payload.old;
+          const invitation = (payload.new || payload.old) as InvitationPayload | null;
           if (invitation && invitation.email === user.email) {
             loadPendingInvitations();
           }
@@ -206,15 +230,15 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
         .eq('board_id', board.id);
 
       if (!lists || lists.length === 0) {
-        stats[board.id] = { total: 0, completed: 0 };
+        stats[board.id] = { total: 0, completed: 0, overdue: 0, urgent: 0 };
         continue;
       }
 
       const doneList = lists.find(list => list.name.toLowerCase() === 'done');
 
-      const { count: totalCount } = await supabase
+      const { data: cardData, count: totalCount } = await supabase
         .from('cards')
-        .select('*', { count: 'exact', head: true })
+        .select('id, list_id, priority, due_date', { count: 'exact' })
         .in('list_id', lists.map(l => l.id));
 
       let completedCount = 0;
@@ -229,10 +253,44 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       stats[board.id] = {
         total: totalCount || 0,
         completed: completedCount,
+        overdue: ((cardData || []) as CardStatsRow[]).filter((card) => {
+          if (!card.due_date || card.list_id === doneList?.id) return false;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          return new Date(`${card.due_date}T00:00:00`) < today;
+        }).length,
+        urgent: ((cardData || []) as CardStatsRow[]).filter((card) => card.priority === 'urgent').length,
       };
     }
 
     setBoardStats(stats);
+    loadRecentActivities();
+  };
+
+  const loadRecentActivities = async () => {
+    if (boards.length === 0) {
+      setRecentActivities([]);
+      return;
+    }
+
+    const boardNames = new Map(boards.map((board) => [board.id, board.name]));
+    const { data, error } = await supabase
+      .from('activities')
+      .select('id, board_id, action, entity_type, metadata, created_at')
+      .in('board_id', boards.map((board) => board.id))
+      .order('created_at', { ascending: false })
+      .limit(6);
+
+    if (error) {
+      console.error('Error loading manager activity:', error);
+      setRecentActivities([]);
+      return;
+    }
+
+    setRecentActivities(((data || []) as RecentActivity[]).map((activity) => ({
+      ...activity,
+      board_name: boardNames.get(activity.board_id) || 'Board',
+    })));
   };
 
   const createBoard = async () => {
@@ -309,6 +367,23 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const filteredBoards = boards.filter(board =>
     board.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const dashboardStats = Object.values(boardStats).reduce(
+    (totals, stats) => ({
+      total: totals.total + stats.total,
+      completed: totals.completed + stats.completed,
+      overdue: totals.overdue + stats.overdue,
+      urgent: totals.urgent + stats.urgent,
+    }),
+    { total: 0, completed: 0, overdue: 0, urgent: 0 }
+  );
+  const dashboardCompletion = dashboardStats.total > 0 ? Math.round((dashboardStats.completed / dashboardStats.total) * 100) : 0;
+
+  const formatActivityMessage = (activity: RecentActivity) => {
+    const target = activity.metadata?.title || activity.metadata?.name || activity.entity_type;
+    if (activity.action === 'moved') return `Moved ${target} to ${activity.metadata?.to_list || 'another list'}`;
+    return `${activity.action.charAt(0).toUpperCase() + activity.action.slice(1)} ${target}`;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex flex-col">
@@ -387,6 +462,56 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
             )}
           </div>
 
+          {boards.length > 0 && (
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 mb-8 animate-fade-in-up">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label: 'Total tasks', value: dashboardStats.total, icon: LayoutGrid, tone: 'primary' },
+                  { label: 'Completed', value: `${dashboardStats.completed} (${dashboardCompletion}%)`, icon: CheckCircle2, tone: 'success' },
+                  { label: 'Overdue', value: dashboardStats.overdue, icon: AlertTriangle, tone: 'danger' },
+                  { label: 'Urgent', value: dashboardStats.urgent, icon: Clock, tone: 'warning' },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const toneClasses = {
+                    primary: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+                    success: 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-300',
+                    danger: 'bg-danger-100 text-danger-700 dark:bg-danger-900/30 dark:text-danger-300',
+                    warning: 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-300',
+                  }[item.tone];
+
+                  return (
+                    <div key={item.label} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-sm">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${toneClasses}`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{item.label}</p>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{item.value}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">Manager Activity</h2>
+                </div>
+                {recentActivities.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No recent activity</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentActivities.map((activity) => (
+                      <div key={activity.id} className="border-l-2 border-primary-200 dark:border-primary-800 pl-3">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-1">{formatActivityMessage(activity)}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{activity.board_name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {filteredBoards.length === 0 ? (
             <div className="text-center py-20 animate-fade-in-up">
               <div className="relative inline-block mb-6">
@@ -412,7 +537,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up">
               {filteredBoards.map((board, index) => {
-                const stats = boardStats[board.id] || { total: 0, completed: 0 };
+                const stats = boardStats[board.id] || { total: 0, completed: 0, overdue: 0, urgent: 0 };
                 const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
 
                 return (
@@ -485,6 +610,18 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                       <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                         <span>{stats.completed} completed</span>
                         <span>{stats.total} total</span>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        {stats.overdue > 0 && (
+                          <span className="px-2 py-1 rounded-lg bg-danger-100 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 text-xs font-semibold">
+                            {stats.overdue} overdue
+                          </span>
+                        )}
+                        {stats.urgent > 0 && (
+                          <span className="px-2 py-1 rounded-lg bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-300 text-xs font-semibold">
+                            {stats.urgent} urgent
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Card>

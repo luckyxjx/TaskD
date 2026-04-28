@@ -29,6 +29,7 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [loadingOwnership, setLoadingOwnership] = useState(true);
+  const currentMember = members.find((member) => member.user_id === currentUserId);
 
   // Get current user ID, check ownership, and auto-load members when modal opens
   useEffect(() => {
@@ -65,14 +66,14 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
       setLoadingOwnership(false);
 
       // Auto-load members
-      loadMembersWithUserId(user.id);
+      loadMembersWithUserId();
       setShowMembers(true); // Auto-show members section
     };
     
     initializeModal();
   }, [isOpen, boardId]);
 
-  const loadMembersWithUserId = async (userId: string) => {
+  const loadMembersWithUserId = async () => {
     const { data, error } = await supabase.rpc('get_board_members', {
       p_board_id: boardId
     });
@@ -171,9 +172,9 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
 
       alert(`Invitation sent to ${email}!`);
       setEmail('');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error inviting user:', error);
-      alert(error.message || 'Failed to send invitation');
+      alert(error instanceof Error ? error.message : 'Failed to send invitation');
     } finally {
       setLoading(false);
     }
@@ -288,6 +289,50 @@ export function ShareBoardModal({ isOpen, onClose, boardId, boardName }: ShareBo
           </div>
         ) : (
           <>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Permission Matrix</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Your current role is {getRoleBadge(currentMember?.role || (isOwner ? 'owner' : 'viewer'))}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Action</th>
+                  <th className="px-4 py-3 text-center font-semibold">Owner</th>
+                  <th className="px-4 py-3 text-center font-semibold">Editor</th>
+                  <th className="px-4 py-3 text-center font-semibold">Viewer</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-gray-700 dark:text-gray-300">
+                {[
+                  ['View board', 'Yes', 'Yes', 'Yes'],
+                  ['Edit cards/lists', 'Yes', 'Yes', 'No'],
+                  ['Rename or delete board', 'Yes', 'No', 'No'],
+                  ['Manage members', 'Yes', 'No', 'No'],
+                  ['Add comments', 'Yes', 'Yes', 'Yes'],
+                ].map((row) => (
+                  <tr key={row[0]}>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{row[0]}</td>
+                    {row.slice(1).map((value, index) => (
+                      <td key={`${row[0]}-${index}`} className={`px-4 py-3 text-center font-semibold ${value === 'Yes' ? 'text-success-700 dark:text-success-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {value}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!isCurrentUserOwner() && (
+            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900 text-xs text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+              You cannot manage members because only board owners can invite users or change roles.
+            </div>
+          )}
+        </div>
+
         {/* Invite Section - Only for owners */}
         {isCurrentUserOwner() && (
           <div>

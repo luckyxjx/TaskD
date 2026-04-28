@@ -9,7 +9,14 @@ interface Activity {
   action: string;
   entity_type: string;
   entity_id: string;
-  metadata: any;
+  metadata: {
+    title?: string;
+    name?: string;
+    from_list?: string;
+    to_list?: string;
+    card_title?: string;
+    role?: string;
+  } | null;
   created_at: string;
   user_email?: string;
 }

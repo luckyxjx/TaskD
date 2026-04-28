@@ -39,7 +39,6 @@ export function Profile({ onBack }: ProfileProps) {
   };
 
   const avatarColor = getAvatarColor(user?.email || 'default');
-  const initials = user?.email?.substring(0, 2).toUpperCase() || 'U';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
