@@ -9,6 +9,8 @@
   
   body {
     @apply antialiased;
+    font-family: Inter, Geist, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
@@ -28,6 +30,69 @@
   
   .glass-card {
     @apply glass rounded-2xl p-6 hover:shadow-glass-lg transition-all duration-300;
+  }
+
+  .app-shell {
+    @apply relative min-h-screen overflow-hidden bg-gray-950 text-gray-100;
+  }
+
+  .app-shell::before {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 8% 8%, rgba(79, 103, 142, 0.2), transparent 24%),
+      radial-gradient(circle at 92% 2%, rgba(217, 153, 169, 0.12), transparent 20%),
+      radial-gradient(circle at 86% 88%, rgba(34, 197, 94, 0.08), transparent 22%);
+    filter: blur(44px);
+  }
+
+  .surface-sidebar {
+    @apply bg-gray-950/85 border-r border-white/5 backdrop-blur-xl;
+  }
+
+  .surface-header {
+    @apply bg-gray-900/75 border-b border-white/5 backdrop-blur-xl;
+  }
+
+  .surface-panel {
+    @apply bg-gray-900/80 border border-white/5 shadow-[0_18px_50px_rgba(0,0,0,0.22)];
+  }
+
+  .surface-card {
+    @apply bg-gray-800/80 border border-white/5 shadow-[0_14px_36px_rgba(0,0,0,0.2)];
+  }
+
+  .surface-card-hover {
+    @apply hover:border-white/10 hover:bg-gray-800/90 hover:shadow-[0_20px_52px_rgba(0,0,0,0.28)];
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-white/[0.06];
+  }
+
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    animation: skeleton-sweep 1.6s infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .urgent-glow {
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22), 0 0 28px rgba(239, 68, 68, 0.12);
   }
   
   /* Focus Mode */

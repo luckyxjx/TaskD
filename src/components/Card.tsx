@@ -8,7 +8,7 @@ interface CardProps {
 }
 
 export function Card({ children, className = '', interactive = false, glass = false, onClick, style }: CardProps) {
-  const baseClasses = glass ? 'glass-card' : 'card p-6';
+  const baseClasses = glass ? 'glass-card' : 'card surface-card p-6';
   const interactiveClasses = interactive ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : '';
   
   return (

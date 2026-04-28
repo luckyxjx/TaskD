@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, ArrowLeft, Plus, LayoutGrid, Sparkles, CheckCircle2, Clock, AlertTriangle, Activity } from 'lucide-react';
+import { Search, User, ArrowLeft, Plus, LayoutGrid, Sparkles, CheckCircle2, Clock, AlertTriangle, Activity, Bell, Home } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -58,6 +58,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const [boards, setBoards] = useState<Board[]>([]);
   const [boardStats, setBoardStats] = useState<BoardStats>({});
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [loadingBoards, setLoadingBoards] = useState(true);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
@@ -178,6 +179,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   };
 
   const loadBoards = async () => {
+    setLoadingBoards(true);
     const { data, error } = await supabase
       .from('boards')
       .select('*')
@@ -186,10 +188,12 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
     if (error) {
       console.error('Error loading boards:', error);
+      setLoadingBoards(false);
       return;
     }
 
     setBoards(data || []);
+    setLoadingBoards(false);
   };
 
   const loadPendingInvitations = async () => {
@@ -385,39 +389,107 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     return `${activity.action.charAt(0).toUpperCase() + activity.action.slice(1)} ${target}`;
   };
 
+  const SkeletonDashboard = () => (
+    <div className="space-y-8 animate-fade-in">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[0, 1, 2, 3].map((item) => (
+          <div key={item} className="surface-card rounded-2xl p-5 h-44">
+            <div className="skeleton w-10 h-10 rounded-xl mb-5" />
+            <div className="skeleton w-24 h-4 rounded mb-4" />
+            <div className="skeleton w-20 h-9 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[0, 1, 2].map((item) => (
+          <div key={item} className="surface-card rounded-2xl p-6 h-56">
+            <div className="skeleton w-12 h-12 rounded-xl mb-6" />
+            <div className="skeleton w-36 h-5 rounded mb-6" />
+            <div className="skeleton w-full h-2 rounded mb-4" />
+            <div className="skeleton w-28 h-4 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex flex-col">
-      {/* Header */}
-      <header className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl border-b border-white/20 dark:border-gray-700/30 px-6 py-4">
+    <div className="app-shell flex">
+      <aside className="surface-sidebar hidden lg:flex w-72 flex-col p-4 relative z-10">
+        <div className="px-3 py-4 mb-4">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">TaskD</p>
+          <h2 className="text-xl font-bold text-white truncate mt-2">{workspaceName || 'Workspace'}</h2>
+        </div>
+        <nav className="space-y-1">
+          <button className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/[0.07] text-white border border-white/5 text-sm font-semibold">
+            <Home className="w-4 h-4 text-primary-300" />
+            Dashboard
+          </button>
+          <button className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={() => document.getElementById('boards-grid')?.scrollIntoView({ behavior: 'smooth' })}>
+            <LayoutGrid className="w-4 h-4" />
+            Boards
+          </button>
+          <button className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={() => document.getElementById('manager-activity')?.scrollIntoView({ behavior: 'smooth' })}>
+            <Activity className="w-4 h-4" />
+            Activity
+          </button>
+          {onInvitationsClick && (
+            <button className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={onInvitationsClick}>
+              <span className="flex items-center gap-3">
+                <Bell className="w-4 h-4" />
+                Invitations
+              </span>
+              {pendingInvitationsCount > 0 && (
+                <span className="tabular-nums min-w-5 h-5 rounded-full bg-danger-500 text-white text-xs flex items-center justify-center">
+                  {pendingInvitationsCount > 9 ? '9+' : pendingInvitationsCount}
+                </span>
+              )}
+            </button>
+          )}
+        </nav>
+        <div className="mt-auto space-y-2">
+          <button onClick={onBack} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold">
+            <ArrowLeft className="w-4 h-4" />
+            Workspaces
+          </button>
+          <button onClick={onProfileClick} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/[0.05] text-sm font-semibold">
+            <User className="w-4 h-4" />
+            Profile
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0 relative z-10">
+      <header className="surface-header px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={onBack}
-              className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-all duration-200 hover:scale-105 active:scale-95"
+              className="flex items-center gap-2 text-gray-300 hover:text-white transition-all duration-200 hover:scale-105 active:scale-95"
             >
-              <div className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-gray-800/50 transition-all">
+              <div className="p-2 rounded-xl hover:bg-white/[0.06] transition-all">
                 <ArrowLeft className="w-5 h-5" />
               </div>
-              <span className="font-semibold">Back to Workspaces</span>
+              <span className="font-semibold hidden sm:inline">Back to Workspaces</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5 z-10 pointer-events-none" />
+          <div className="flex items-center gap-3">
+            <div className="relative hidden sm:block">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-5 h-5 z-10 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search boards..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-white/20 dark:border-gray-700/30 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none backdrop-blur-sm transition-all duration-200 w-64 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                className="pl-12 pr-4 py-3 bg-white/[0.04] border border-white/5 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none backdrop-blur-sm transition-all duration-200 w-64 text-gray-100 placeholder:text-gray-500"
               />
             </div>
 
             {onInvitationsClick && (
               <button
                 onClick={onInvitationsClick}
-                className="relative p-3 rounded-xl bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-400 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all duration-200"
+                className="relative p-3 rounded-xl bg-white/[0.04] border border-white/5 text-accent-300 hover:bg-white/[0.07] transition-all duration-200"
                 title="View invitations"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -433,7 +505,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
             <button
               onClick={onProfileClick}
-              className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-400 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-all duration-200"
+              className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-center text-primary-300 hover:bg-white/[0.07] transition-all duration-200"
             >
               <User className="w-6 h-6" />
             </button>
@@ -442,14 +514,14 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       </header>
 
       {/* Content */}
-      <main className="flex-1 p-6 overflow-y-auto custom-scrollbar">
+      <main className="flex-1 p-4 sm:p-6 overflow-y-auto custom-scrollbar">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8 animate-fade-in-down">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+              <h1 className="text-4xl font-bold text-white mb-2">
                 {workspaceName}
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">Organize your work and boost productivity</p>
+              <p className="text-gray-500">Organize your work and boost productivity</p>
             </div>
             {filteredBoards.length > 0 && (
               <Button
@@ -462,7 +534,9 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
             )}
           </div>
 
-          {boards.length > 0 && (
+          {loadingBoards ? (
+            <SkeletonDashboard />
+          ) : boards.length > 0 && (
             <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 mb-8 animate-fade-in-up">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
@@ -480,30 +554,33 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                   }[item.tone];
 
                   return (
-                    <div key={item.label} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-sm">
+                    <div key={item.label} className="surface-card surface-card-hover rounded-2xl p-5 min-h-44">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${toneClasses}`}>
                         <Icon className="w-5 h-5" />
                       </div>
-                      <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{item.label}</p>
-                      <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{item.value}</p>
+                      <p className="text-sm font-semibold text-gray-500">{item.label}</p>
+                      <p className="tabular-nums text-3xl font-bold text-white mt-1">{item.value}</p>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-sm">
+              <div id="manager-activity" className="surface-card rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-4">
-                  <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">Manager Activity</h2>
+                  <Activity className="w-5 h-5 text-primary-300" />
+                  <h2 className="text-sm font-bold text-white">Manager Activity</h2>
                 </div>
                 {recentActivities.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No recent activity</p>
+                  <div className="py-8 text-center">
+                    <Activity className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500">No recent activity</p>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {recentActivities.map((activity) => (
-                      <div key={activity.id} className="border-l-2 border-primary-200 dark:border-primary-800 pl-3">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-1">{formatActivityMessage(activity)}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{activity.board_name}</p>
+                      <div key={activity.id} className="border-l border-white/10 pl-3">
+                        <p className="text-sm font-medium text-gray-100 line-clamp-1">{formatActivityMessage(activity)}</p>
+                        <p className="text-xs text-gray-500">{activity.board_name}</p>
                       </div>
                     ))}
                   </div>
@@ -512,18 +589,18 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
             </div>
           )}
 
-          {filteredBoards.length === 0 ? (
+          {!loadingBoards && filteredBoards.length === 0 ? (
             <div className="text-center py-20 animate-fade-in-up">
               <div className="relative inline-block mb-6">
-                <div className="w-24 h-24 rounded-2xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center">
-                  <LayoutGrid className="w-12 h-12 text-primary-600 dark:text-primary-400" />
+                <div className="w-24 h-24 rounded-2xl bg-white/[0.04] border border-white/5 flex items-center justify-center">
+                  <LayoutGrid className="w-12 h-12 text-primary-300" />
                 </div>
                 <div className="absolute -top-2 -right-2">
                   <Sparkles className="w-8 h-8 text-accent-500 dark:text-accent-400 animate-bounce-subtle" />
                 </div>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">No boards yet</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
+              <h3 className="text-2xl font-bold text-white mb-2">No boards yet</h3>
+              <p className="text-gray-500 mb-6 max-w-md mx-auto">
                 Create your first board to start organizing your tasks and projects
               </p>
               <Button
@@ -535,7 +612,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up">
+            <div id="boards-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
               {filteredBoards.map((board, index) => {
                 const stats = boardStats[board.id] || { total: 0, completed: 0, overdue: 0, urgent: 0 };
                 const percentage = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
@@ -545,12 +622,12 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                     key={board.id}
                     interactive
                     onClick={() => onBoardClick(board.id)}
-                    className="group relative"
+                    className="group relative surface-card-hover"
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <div className="flex items-start justify-between mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
-                        <LayoutGrid className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                      <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-200">
+                        <LayoutGrid className="w-6 h-6 text-primary-300" />
                       </div>
                       <div className="relative" ref={openDropdownId === board.id ? dropdownRef : null}>
                         <button
@@ -592,22 +669,22 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                       </div>
                     </div>
 
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                    <h3 className="text-lg font-bold text-white mb-2 group-hover:text-primary-300 transition-colors">
                       {board.name}
                     </h3>
 
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                      <div className="flex items-center justify-between text-sm text-gray-500">
                         <span>Progress</span>
-                        <span className="font-semibold">{percentage}%</span>
+                        <span className="tabular-nums font-semibold">{percentage}%</span>
                       </div>
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                      <div className="w-full bg-white/[0.08] rounded-full h-2 overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-primary-500 to-accent-600 rounded-full transition-all duration-500"
                           style={{ width: `${percentage}%` }}
                         />
                       </div>
-                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center justify-between text-xs text-gray-500 tabular-nums">
                         <span>{stats.completed} completed</span>
                         <span>{stats.total} total</span>
                       </div>
@@ -631,6 +708,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           )}
         </div>
       </main>
+      </div>
 
       {/* Modals */}
       <Modal

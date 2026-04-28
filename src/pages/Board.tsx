@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users } from 'lucide-react';
+import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -97,12 +97,18 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [loadingBoard, setLoadingBoard] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [boardError, setBoardError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const canManageBoard = roleState.isOwner;
   const canManageLists = roleState.isOwner || roleState.isEditor;
   const canManageCards = roleState.isOwner || roleState.isEditor;
   const canInteractWithBoard = !loadingRole && (canManageLists || canManageCards);
   const permissionMessage = `You cannot edit this board because your role is ${roleState.role === 'viewer' ? 'Viewer' : 'not allowed'}.`;
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(null), 2600);
+  };
 
   const setViewerFallback = () => {
     setRoleState({
@@ -348,6 +354,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         entity_id: data.id,
         metadata: { name: data.name }
       }]);
+      showToast('Card created');
     }
   };
 
@@ -481,6 +488,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       entity_id: selectedCard.id,
       metadata: { title: cardModalTitle }
     }]);
+    showToast('Card updated');
   };
 
   const deleteCard = async () => {
@@ -508,6 +516,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
 
     setShowCardModal(false);
     setSelectedCard(null);
+    showToast('Card deleted');
   };
 
   const handleDragStart = (e: React.DragEvent, card: Card) => {
@@ -569,6 +578,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       )
     );
     setDraggedCard(null);
+    showToast(`Moved to ${toList?.name || 'another list'}`);
   };
 
   const handleListDragStart = (e: React.DragEvent, list: List) => {
@@ -750,10 +760,31 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
 
   if (loadingBoard) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary-500 border-t-transparent"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading board...</p>
+      <div className="app-shell p-6">
+        <div className="relative z-10 max-w-7xl mx-auto space-y-6">
+          <div className="surface-header rounded-2xl p-5">
+            <div className="skeleton w-48 h-9 rounded mb-4" />
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              {[0, 1, 2, 3, 4].map((item) => (
+                <div key={item} className="surface-card rounded-xl p-4 h-24">
+                  <div className="skeleton w-24 h-4 rounded mb-4" />
+                  <div className="skeleton w-14 h-8 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-4 overflow-hidden">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="surface-panel rounded-2xl p-4 w-80 flex-shrink-0">
+                <div className="skeleton w-28 h-5 rounded mb-5" />
+                <div className="space-y-3">
+                  <div className="skeleton h-28 rounded-xl" />
+                  <div className="skeleton h-24 rounded-xl" />
+                  <div className="skeleton h-28 rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -761,8 +792,8 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
 
   if (accessDenied) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-8 text-center shadow-sm">
+      <div className="app-shell flex items-center justify-center p-6">
+        <div className="relative z-10 max-w-md w-full surface-card rounded-2xl p-8 text-center">
           <div className="w-14 h-14 rounded-2xl bg-danger-100 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 flex items-center justify-center mx-auto mb-4">
             <Ban className="w-7 h-7" />
           </div>
@@ -777,8 +808,8 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4 flex-shrink-0">
+    <div className="app-shell flex flex-col">
+      <header className="surface-header px-4 sm:px-6 py-4 flex-shrink-0 relative z-10">
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={onBack}
@@ -969,7 +1000,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-x-auto p-6 custom-scrollbar" data-board-role={roleState.role ?? 'unknown'} data-can-interact={canInteractWithBoard}>
+      <div className="flex-1 overflow-x-auto p-6 custom-scrollbar relative z-10" data-board-role={roleState.role ?? 'unknown'} data-can-interact={canInteractWithBoard}>
         <div className="flex gap-4 h-full">
           {/* Lists Container */}
           <div className="flex gap-4 min-w-max pb-4 flex-1">
@@ -980,7 +1011,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
               onDragStart={canManageLists ? (e) => handleListDragStart(e, list) : undefined}
               onDragOver={canManageLists ? handleListDragOver : undefined}
               onDrop={canManageLists ? (e) => handleListDrop(e, list) : undefined}
-              className={`glass rounded-2xl p-4 w-80 flex flex-col flex-shrink-0 animate-fade-in-up bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 ${canManageLists ? 'cursor-move' : 'cursor-default'}`}
+              className={`surface-panel rounded-2xl p-4 w-80 flex flex-col flex-shrink-0 animate-fade-in-up ${canManageLists ? 'cursor-move' : 'cursor-default'}`}
               style={{ animationDelay: `${index * 50}ms` }}
             >
               <div className="flex items-center justify-between mb-4">
@@ -1022,7 +1053,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                     draggable={canManageCards}
                     onDragStart={canManageCards ? (e) => handleDragStart(e, card) : undefined}
                     onClick={() => openCardModal(card)}
-                    className={`bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-lg hover:border-primary-300 dark:hover:border-primary-600 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group animate-fade-in ${canManageCards ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    className={`surface-card surface-card-hover backdrop-blur-sm p-4 rounded-xl cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 group animate-fade-in ${card.priority === 'urgent' ? 'urgent-glow' : ''} ${draggedCard?.id === card.id ? 'opacity-70 rotate-2 scale-[1.02]' : ''} ${canManageCards ? 'cursor-grab active:cursor-grabbing' : ''}`}
                     style={{ animationDelay: `${cardIndex * 30}ms` }}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -1060,6 +1091,13 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                     </div>
                   </div>
                 ))}
+                {getListCards(list.id).length === 0 && (
+                  <div className="border border-dashed border-white/10 rounded-xl py-10 px-4 text-center">
+                    <LayoutGrid className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-gray-400">No tasks here yet</p>
+                    <p className="text-xs text-gray-600 mt-1">Cards matching your filters will appear here.</p>
+                  </div>
+                )}
               </div>
               {/* Add Card Button - Only visible to owners and editors */}
               {!loadingRole && canManageCards && (
@@ -1438,6 +1476,11 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
         boardId={boardId}
         boardName={boardName}
       />
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[70] surface-card rounded-xl px-4 py-3 text-sm font-semibold text-white animate-fade-in shadow-2xl">
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 }
