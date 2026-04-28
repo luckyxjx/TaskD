@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid, Paperclip, CheckSquare, Pencil, Save, ExternalLink, Bell, ClipboardList } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -126,6 +126,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   const [quickEditingCardId, setQuickEditingCardId] = useState<string | null>(null);
   const [quickEditTitle, setQuickEditTitle] = useState('');
   const [checklistMode, setChecklistMode] = useState(false);
+  const suppressNextCardReloadRef = useRef(false);
 
   const canManageBoard = roleState.isOwner;
   const canManageLists = roleState.isOwner || roleState.isEditor;
@@ -238,6 +239,10 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           table: 'cards'
         },
         (payload) => {
+          if (suppressNextCardReloadRef.current) {
+            suppressNextCardReloadRef.current = false;
+            return;
+          }
           console.log('Card change detected:', payload);
           loadBoardData();
         }
@@ -1086,6 +1091,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     }
 
     const fromList = lists.find((list) => list.id === card.list_id);
+    suppressNextCardReloadRef.current = true;
 
     setCards(
       cards.map((item) =>
