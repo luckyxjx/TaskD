@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Ban, Users, LayoutGrid, Paperclip, CheckSquare, Pencil, Save, ExternalLink, Bell, ClipboardList } from 'lucide-react';
+import { Search, User, ArrowLeft, Plus, MoreVertical, Trash2, Edit3, Calendar, Tag, Shield, Users, LayoutGrid, Paperclip, CheckSquare, Pencil, Save, ExternalLink, Bell, ClipboardList } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -7,6 +8,8 @@ import { Input } from '../components/Input';
 import { ShareBoardModal } from '../components/ShareBoardModal';
 import { CardComments } from '../components/CardComments';
 import { ActivityFeed } from '../components/ActivityFeed';
+import { AccessState } from '../components/AccessState';
+import { PermissionSummary } from '../components/PermissionSummary';
 import { ShareIcon, ActivityIcon, LogOutIcon } from '../icons';
 
 interface List {
@@ -1046,6 +1049,12 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
     return priority.charAt(0).toUpperCase() + priority.slice(1);
   };
 
+  const boardCapabilities = roleState.isOwner
+    ? ['Manage members', 'Rename board', 'Delete board', 'Edit cards and lists']
+    : roleState.isEditor
+      ? ['Edit cards', 'Manage lists', 'Move tasks', 'Comment']
+      : ['View board', 'View comments', 'Read-only mode'];
+
   const getDoneList = () => lists.find((list) => list.name.trim().toLowerCase() === 'done');
 
   const getTodoList = () => {
@@ -1167,20 +1176,7 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
   }
 
   if (accessDenied) {
-    return (
-      <div className="app-shell flex items-center justify-center p-6">
-        <div className="relative z-10 max-w-md w-full surface-card rounded-2xl p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-danger-100 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 flex items-center justify-center mx-auto mb-4">
-            <Ban className="w-7 h-7" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Access Denied</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">{boardError}</p>
-          <Button onClick={onBack} variant="primary" icon={ArrowLeft}>
-            Back to Dashboard
-          </Button>
-        </div>
-      </div>
-    );
+    return <AccessState message={boardError || 'You do not have access to this board.'} actionLabel="Back to Dashboard" onAction={onBack} />;
   }
 
   return (
@@ -1224,6 +1220,13 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                   <span className="text-sm font-medium">Share</span>
                 </button>
               )}
+              <Link
+                to="/roles"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/70 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-200 text-sm font-medium"
+              >
+                <Shield className="w-4 h-4" />
+                Role matrix
+              </Link>
 
               {/* Activity Feed Button */}
               <button
@@ -1328,6 +1331,20 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
           <div className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
             <Shield className="w-5 h-5 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
             <span>{permissionMessage} Read-only mode is active, so editing, moving, deleting, and member management are disabled.</span>
+          </div>
+        )}
+        {!loadingRole && roleState.role && (
+          <div className="mt-4">
+            <PermissionSummary
+              label="Board access"
+              role={roleState.role}
+              description={roleState.isOwner
+                ? 'You have full control of this board.'
+                : roleState.isEditor
+                  ? 'You can edit tasks and lists on this board, but you cannot manage board-level security.'
+                  : 'You can inspect content and comments, but all mutation actions are blocked.'}
+              capabilities={boardCapabilities}
+            />
           </div>
         )}
         <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">

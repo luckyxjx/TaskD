@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { LayoutGrid, Plus, User, Users, Crown, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
@@ -391,6 +392,12 @@ export function Workspaces({ onWorkspaceClick, onBoardClick, onProfileClick, onI
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              to="/roles"
+              className="px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-200"
+            >
+              Role Matrix
+            </Link>
             {onInvitationsClick && (
               <button
                 onClick={onInvitationsClick}

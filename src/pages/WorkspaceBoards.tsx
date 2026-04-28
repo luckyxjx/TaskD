@@ -1,11 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
 import { Search, User, Users, ArrowLeft, Plus, LayoutGrid, Sparkles, CheckCircle2, Clock, AlertTriangle, Activity, Bell, Home } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { ShareWorkspaceModal } from '../components/ShareWorkspaceModal';
+import { ShareBoardModal } from '../components/ShareBoardModal';
+import { AccessState } from '../components/AccessState';
+import { PermissionSummary } from '../components/PermissionSummary';
 import { MoreVerticalIcon, EditIcon, TrashIcon } from '../icons';
 
 interface Board {
@@ -29,11 +34,13 @@ interface BoardStats {
 interface RecentActivity {
   id: string;
   board_id: string;
+  user_id: string | null;
   action: string;
   entity_type: string;
   metadata: { title?: string; name?: string; to_list?: string } | null;
   created_at: string;
   board_name?: string;
+  actor_email?: string;
 }
 
 interface InvitationPayload {
@@ -56,6 +63,7 @@ interface WorkspaceCardSearchResult {
   label: string | null;
   due_date: string | null;
   reminder_at: string | null;
+  assignee_id: string | null;
   board_id: string;
   board_name: string;
 }
@@ -77,11 +85,19 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   const [boardStats, setBoardStats] = useState<BoardStats>({});
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [workspaceCards, setWorkspaceCards] = useState<WorkspaceCardSearchResult[]>([]);
+  const [userEmailMap, setUserEmailMap] = useState<Record<string, string>>({});
   const [loadingBoards, setLoadingBoards] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState<'dashboard' | 'boards' | 'activity'>('dashboard');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showInviteLauncherModal, setShowInviteLauncherModal] = useState(false);
+  const [showWorkspaceInviteModal, setShowWorkspaceInviteModal] = useState(false);
+  const [showBoardInvitePickerModal, setShowBoardInvitePickerModal] = useState(false);
+  const [selectedBoardForInvite, setSelectedBoardForInvite] = useState<Board | null>(null);
+  const [showBoardInviteModal, setShowBoardInviteModal] = useState(false);
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
   const [showRenameBoardModal, setShowRenameBoardModal] = useState(false);
@@ -196,6 +212,31 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     return 'viewer';
   };
 
+  const resolveUserEmails = async (userIds: string[]) => {
+    const missingIds = Array.from(new Set(userIds.filter((userId) => userId && !userEmailMap[userId])));
+    if (missingIds.length === 0) return;
+
+    const results = await Promise.all(
+      missingIds.map(async (userId) => {
+        const { data, error } = await supabase.rpc('get_user_email', {
+          user_uuid: userId
+        });
+
+        if (error || !data) {
+          console.error('Error resolving user email:', error);
+          return [userId, 'Unknown user'] as const;
+        }
+
+        return [userId, data as string] as const;
+      })
+    );
+
+    setUserEmailMap((current) => ({
+      ...current,
+      ...Object.fromEntries(results),
+    }));
+  };
+
   const getBoardRole = (boardId: string): BoardRole => {
     if (workspaceRole === 'owner') return 'owner';
     return boardRoles[boardId] || 'viewer';
@@ -207,6 +248,10 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     const role = getBoardRole(boardId);
     return workspaceRole === 'owner' || role === 'owner';
   };
+
+  const canInviteToWorkspace = workspaceRole === 'owner';
+
+  const invitableBoards = boards.filter((board) => canManageBoard(board.id));
 
   const canEditBoard = (boardId: string) => {
     const role = getBoardRole(boardId);
@@ -232,6 +277,8 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   };
 
   const loadWorkspaceContext = async () => {
+    setAccessDenied(false);
+    setWorkspaceError(null);
     const { data, error } = await supabase
       .from('workspaces')
       .select('name, owner_id')
@@ -240,6 +287,9 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
     if (error) {
       console.error('Error loading workspace:', error);
+      setAccessDenied(true);
+      setWorkspaceError('You do not have access to this workspace, or it no longer exists.');
+      setLoadingBoards(false);
       return;
     }
 
@@ -270,11 +320,20 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       return;
     }
 
+    if (!membership) {
+      setAccessDenied(true);
+      setWorkspaceError('You do not have access to this workspace.');
+      setLoadingBoards(false);
+      return;
+    }
+
     setWorkspaceRole(mapWorkspaceRole(membership?.role));
   };
 
   const loadBoards = async () => {
     setLoadingBoards(true);
+    setAccessDenied(false);
+    setWorkspaceError(null);
     const { data, error } = await supabase
       .from('boards')
       .select('*')
@@ -283,6 +342,8 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
 
     if (error) {
       console.error('Error loading boards:', error);
+      setAccessDenied(true);
+      setWorkspaceError('Unable to load boards for this workspace.');
       setLoadingBoards(false);
       return;
     }
@@ -432,7 +493,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     const listBoardMap = new Map((lists as { id: string; board_id: string }[]).map((list) => [list.id, list.board_id]));
     const { data: cardsData, error: cardsError } = await supabase
       .from('cards')
-      .select('id, list_id, title, description, label, due_date, reminder_at')
+      .select('id, list_id, title, description, label, due_date, reminder_at, assignee_id')
       .in('list_id', lists.map((list) => list.id))
       .order('updated_at', { ascending: false })
       .limit(80);
@@ -451,6 +512,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       label: string | null;
       due_date: string | null;
       reminder_at: string | null;
+      assignee_id: string | null;
     }>).map((card) => {
       const boardId = listBoardMap.get(card.list_id) || '';
       return {
@@ -460,10 +522,17 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
         label: card.label,
         due_date: card.due_date,
         reminder_at: card.reminder_at,
+        assignee_id: card.assignee_id,
         board_id: boardId,
         board_name: boardNames.get(boardId) || 'Board',
       };
     }));
+
+    void resolveUserEmails(
+      ((cardsData || []) as Array<{ assignee_id: string | null }>)
+        .map((card) => card.assignee_id)
+        .filter((userId): userId is string => Boolean(userId))
+    );
   };
 
   const loadRecentActivities = async () => {
@@ -475,7 +544,7 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     const boardNames = new Map(boards.map((board) => [board.id, board.name]));
     const { data, error } = await supabase
       .from('activities')
-      .select('id, board_id, action, entity_type, metadata, created_at')
+      .select('id, board_id, user_id, action, entity_type, metadata, created_at')
       .in('board_id', boards.map((board) => board.id))
       .order('created_at', { ascending: false })
       .limit(40);
@@ -486,10 +555,17 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
       return;
     }
 
-    setRecentActivities(((data || []) as RecentActivity[]).map((activity) => ({
+    const activities = ((data || []) as RecentActivity[]).map((activity) => ({
       ...activity,
       board_name: boardNames.get(activity.board_id) || 'Board',
-    })));
+    }));
+
+    setRecentActivities(activities);
+    void resolveUserEmails(
+      activities
+        .map((activity) => activity.user_id)
+        .filter((userId): userId is string => Boolean(userId))
+    );
   };
 
   const createBoard = async () => {
@@ -563,6 +639,26 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     setOpenDropdownId(openDropdownId === boardId ? null : boardId);
   };
 
+  const openInviteLauncher = () => {
+    setShowInviteLauncherModal(true);
+  };
+
+  const openWorkspaceInviteFlow = () => {
+    setShowInviteLauncherModal(false);
+    setShowWorkspaceInviteModal(true);
+  };
+
+  const openBoardInvitePicker = () => {
+    setShowInviteLauncherModal(false);
+    setShowBoardInvitePickerModal(true);
+  };
+
+  const openBoardInviteFlow = (board: Board) => {
+    setSelectedBoardForInvite(board);
+    setShowBoardInvitePickerModal(false);
+    setShowBoardInviteModal(true);
+  };
+
   const filteredBoards = boards.filter(board =>
     board.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -578,6 +674,11 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   );
   const dashboardCompletion = dashboardStats.total > 0 ? Math.round((dashboardStats.completed / dashboardStats.total) * 100) : 0;
   const activeBoards = boards.filter((board) => (boardStats[board.id]?.total || 0) > 0).length;
+
+  const getUserLabel = (userId?: string | null) => {
+    if (!userId) return 'Unassigned';
+    return userEmailMap[userId] || 'Loading user...';
+  };
 
   const formatActivityMessage = (activity: RecentActivity) => {
     const target = activity.metadata?.title || activity.metadata?.name || activity.entity_type;
@@ -630,11 +731,50 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
   });
 
   const assigneeWorkload = workspaceCards.reduce<Record<string, number>>((acc, card) => {
-    const key = card.board_name;
+    const key = card.assignee_id || 'unassigned';
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
-  const topWorkload = Object.entries(assigneeWorkload).slice(0, 5);
+  const topWorkload = Object.entries(assigneeWorkload)
+    .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
+    .slice(0, 5);
+
+  const overdueByAssignee = overdueCards.reduce<Record<string, number>>((acc, card) => {
+    const key = card.assignee_id || 'unassigned';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const topOverdueAssignees = Object.entries(overdueByAssignee)
+    .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
+    .slice(0, 5);
+
+  const contributorActivity = recentActivities.reduce<Record<string, number>>((acc, activity) => {
+    const key = activity.user_id || 'system';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const topContributors = Object.entries(contributorActivity)
+    .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
+    .slice(0, 5);
+  const activeContributorCount = Object.keys(contributorActivity).filter((key) => key !== 'system').length;
+
+  const completionCountsByDay = Array.from({ length: 7 }).map((_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    const key = date.toISOString().slice(0, 10);
+    const count = recentActivities.filter((activity) => {
+      const happenedOnDay = activity.created_at.slice(0, 10) === key;
+      if (!happenedOnDay) return false;
+      if (activity.action === 'completed') return true;
+      return activity.action === 'moved' && (activity.metadata?.to_list || '').toLowerCase() === 'done';
+    }).length;
+    return {
+      key,
+      label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+      count,
+    };
+  });
+  const maxCompletionCount = Math.max(1, ...completionCountsByDay.map((day) => day.count));
 
   const navButtonClass = (section: 'dashboard' | 'boards' | 'activity') =>
     `w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-colors ${
@@ -660,6 +800,16 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     : workspaceRole === 'editor'
       ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
       : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+  const workspacePermissionDescription = workspaceRole === 'owner'
+    ? 'You can create boards, rename boards, delete boards, and manage access across the workspace.'
+    : workspaceRole === 'editor'
+      ? 'You can work inside boards where you are an editor, but workspace-level board management is restricted.'
+      : 'You have read-only visibility. Board management and content mutations are blocked unless a board-specific role grants more access.';
+  const workspaceCapabilities = workspaceRole === 'owner'
+    ? ['Create boards', 'Rename/delete boards', 'View analytics', 'Manage access']
+    : workspaceRole === 'editor'
+      ? ['Open assigned boards', 'Edit cards/lists inside boards', 'View analytics']
+      : ['View workspace', 'Open shared boards', 'Read-only access'];
 
   const SkeletonDashboard = () => (
     <div className="space-y-8 animate-fade-in">
@@ -685,6 +835,10 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
     </div>
   );
 
+  if (accessDenied) {
+    return <AccessState message={workspaceError || 'You do not have access to this workspace.'} actionLabel="Back to Workspaces" onAction={onBack} />;
+  }
+
   return (
     <div className="app-shell flex">
       <aside className="surface-sidebar hidden lg:flex w-72 flex-col p-4 relative z-10">
@@ -706,10 +860,10 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
             Activity
           </button>
           {onInvitationsClick && (
-            <button className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={onInvitationsClick}>
+            <button className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold" onClick={openInviteLauncher}>
               <span className="flex items-center gap-3">
                 <Bell className="w-4 h-4" />
-                Invitations
+                Invite People
               </span>
               {pendingInvitationsCount > 0 && (
                 <span className="tabular-nums min-w-5 h-5 rounded-full bg-danger-500 text-white text-xs flex items-center justify-center">
@@ -718,6 +872,13 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               )}
             </button>
           )}
+          <Link
+            to="/roles"
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold"
+          >
+            <Users className="w-4 h-4" />
+            Role Matrix
+          </Link>
         </nav>
         <div className="mt-auto space-y-2">
           <button onClick={onBack} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.05] text-sm font-semibold">
@@ -878,6 +1039,14 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
                   </span>
                 )}
               </div>
+              <div className="mt-4 max-w-4xl">
+                <PermissionSummary
+                  label="Workspace access"
+                  role={workspaceRole}
+                  description={workspacePermissionDescription}
+                  capabilities={workspaceCapabilities}
+                />
+              </div>
             </div>
             {activeSection !== 'activity' && filteredBoards.length > 0 && canCreateBoards && (
               <Button
@@ -959,21 +1128,75 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
               </div>
               <div className="surface-card rounded-2xl p-5 xl:col-span-2">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-bold text-white">Board Workload</h2>
-                  <span className="text-xs text-gray-600">Cards by board</span>
+                  <h2 className="text-sm font-bold text-white">Assignee Workload</h2>
+                  <span className="text-xs text-gray-600">Cards by assignee</span>
                 </div>
                 <div className="space-y-3">
                   {topWorkload.length === 0 ? (
                     <p className="text-sm text-gray-500 py-6 text-center">No workload data yet</p>
-                  ) : topWorkload.map(([name, count]) => (
-                    <div key={name}>
+                  ) : topWorkload.map(([userId, count]) => (
+                    <div key={userId}>
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-gray-300">{name}</span>
+                        <span className="text-gray-300">{getUserLabel(userId === 'unassigned' ? null : userId)}</span>
                         <span className="text-gray-500 tabular-nums">{count}</span>
                       </div>
                       <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
                         <div className="h-full rounded-full bg-primary-500" style={{ width: `${Math.max(8, (count / Math.max(1, dashboardStats.total)) * 100)}%` }} />
                       </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="surface-card rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-bold text-white">Overdue by Assignee</h2>
+                  <span className="text-xs text-gray-600">Ownership risk</span>
+                </div>
+                <div className="space-y-3">
+                  {topOverdueAssignees.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-6 text-center">No overdue assignments</p>
+                  ) : topOverdueAssignees.map(([userId, count]) => (
+                    <div key={userId} className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-3">
+                      <span className="text-sm text-gray-200">{getUserLabel(userId === 'unassigned' ? null : userId)}</span>
+                      <span className="text-sm font-semibold text-danger-300 tabular-nums">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="surface-card rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-bold text-white">Completion Trend</h2>
+                  <span className="text-xs text-gray-600">Last 7 days</span>
+                </div>
+                <div className="flex items-end gap-2 h-24">
+                  {completionCountsByDay.map((day) => (
+                    <div key={day.key} className="flex-1 flex flex-col items-center justify-end gap-2">
+                      <div
+                        className="w-full rounded-t-lg bg-success-500/70 min-h-1"
+                        style={{ height: `${Math.max(6, (day.count / maxCompletionCount) * 72)}px` }}
+                        title={`${day.count} tasks completed`}
+                      />
+                      <span className="text-[10px] text-gray-600">{day.label}</span>
+                      <span className="text-[10px] text-gray-500 tabular-nums">{day.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="surface-card rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-bold text-white">Active Contributors</h2>
+                  <span className="text-xs text-gray-600">{activeContributorCount} active</span>
+                </div>
+                <div className="space-y-3">
+                  {topContributors.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-6 text-center">No contributor activity yet</p>
+                  ) : topContributors.map(([userId, count]) => (
+                    <div key={userId} className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-3">
+                      <div>
+                        <p className="text-sm text-gray-200">{userId === 'system' ? 'System' : getUserLabel(userId)}</p>
+                        <p className="text-xs text-gray-500">Recent activity events</p>
+                      </div>
+                      <span className="text-sm font-semibold text-primary-300 tabular-nums">{count}</span>
                     </div>
                   ))}
                 </div>
@@ -1275,6 +1498,101 @@ export function WorkspaceBoards({ workspaceId, onBoardClick, onBack, onProfileCl
           </div>
         </div>
       </Modal>
+
+      <Modal
+        isOpen={showInviteLauncherModal}
+        onClose={() => setShowInviteLauncherModal(false)}
+        title="Invite People"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Choose where you want to grant access from this workspace.
+          </p>
+          <button
+            onClick={openWorkspaceInviteFlow}
+            disabled={!canInviteToWorkspace}
+            title={!canInviteToWorkspace ? 'Only workspace owners can invite users to the whole workspace.' : 'Invite to this workspace'}
+            className={`w-full rounded-2xl border px-5 py-5 text-left transition-all ${
+              canInviteToWorkspace
+                ? 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/30'
+                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 opacity-60 cursor-not-allowed'
+            }`}
+          >
+            <p className="text-base font-bold text-gray-900 dark:text-gray-100">Invite to this workspace</p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Send one invite that grants access to all boards in this workspace.
+            </p>
+          </button>
+          <button
+            onClick={openBoardInvitePicker}
+            disabled={invitableBoards.length === 0}
+            title={invitableBoards.length === 0 ? 'You do not own any boards here that you can invite people to.' : 'Invite to a specific board'}
+            className={`w-full rounded-2xl border px-5 py-5 text-left transition-all ${
+              invitableBoards.length > 0
+                ? 'border-accent-200 dark:border-accent-800 bg-accent-50 dark:bg-accent-900/20 hover:bg-accent-100 dark:hover:bg-accent-900/30'
+                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 opacity-60 cursor-not-allowed'
+            }`}
+          >
+            <p className="text-base font-bold text-gray-900 dark:text-gray-100">Invite to specific board</p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Pick one board and send a board-level editor or viewer invite.
+            </p>
+          </button>
+          <div className="flex justify-end pt-2">
+            <Button onClick={onInvitationsClick} variant="secondary">
+              Open Inbox
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showBoardInvitePickerModal}
+        onClose={() => setShowBoardInvitePickerModal(false)}
+        title="Select Board to Invite To"
+        size="md"
+      >
+        <div className="space-y-3">
+          {invitableBoards.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              You do not own any boards in this workspace that can send board-specific invites.
+            </p>
+          ) : (
+            invitableBoards.map((board) => (
+              <button
+                key={board.id}
+                onClick={() => openBoardInviteFlow(board)}
+                className="w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-4 text-left hover:border-primary-300 dark:hover:border-primary-700 transition-all"
+              >
+                <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{board.name}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Send editor or viewer access for this board only.
+                </p>
+              </button>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      <ShareWorkspaceModal
+        isOpen={showWorkspaceInviteModal}
+        onClose={() => setShowWorkspaceInviteModal(false)}
+        workspaceId={workspaceId}
+        workspaceName={workspaceName}
+      />
+
+      {selectedBoardForInvite && (
+        <ShareBoardModal
+          isOpen={showBoardInviteModal}
+          onClose={() => {
+            setShowBoardInviteModal(false);
+            setSelectedBoardForInvite(null);
+          }}
+          boardId={selectedBoardForInvite.id}
+          boardName={selectedBoardForInvite.name}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, Shield, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/Card';
+import { AccessState } from '../components/AccessState';
+import { PermissionSummary } from '../components/PermissionSummary';
 import { LayoutGridIcon } from '../icons';
 
 interface SharedBoard {
@@ -23,6 +26,8 @@ interface SharedBoardsProps {
 export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoardsProps) {
   const [sharedBoards, setSharedBoards] = useState<SharedBoard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSharedBoards();
@@ -30,9 +35,13 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
 
   const loadSharedBoards = async () => {
     setLoading(true);
+    setAccessDenied(false);
+    setPageError(null);
     const { data: user } = await supabase.auth.getUser();
     
     if (!user.user) {
+      setAccessDenied(true);
+      setPageError('You need to be signed in to view shared boards.');
       setLoading(false);
       return;
     }
@@ -50,6 +59,8 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
 
     if (memberError) {
       console.error('Error loading board members:', memberError);
+      setAccessDenied(true);
+      setPageError('Unable to load your shared boards right now.');
       setLoading(false);
       return;
     }
@@ -82,6 +93,8 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
 
     if (boardsError) {
       console.error('Error loading boards:', boardsError);
+      setAccessDenied(true);
+      setPageError('Unable to load shared board details.');
       setLoading(false);
       return;
     }
@@ -126,6 +139,10 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
     setSharedBoards(sharedBoardsWithDetails);
     setLoading(false);
   };
+
+  if (accessDenied) {
+    return <AccessState message={pageError || 'You cannot access this shared board view.'} actionLabel="Back to Dashboard" onAction={onBack} />;
+  }
 
   const getRoleBadge = (role: string) => {
     const styles = {
@@ -174,6 +191,21 @@ export function SharedBoards({ onBack, onBoardClick, onProfileClick }: SharedBoa
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Shared with Me</h1>
             <p className="text-gray-600 dark:text-gray-400">Boards that have been shared with you</p>
           </div>
+        </div>
+        <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+          <PermissionSummary
+            label="Shared board access"
+            role="viewer"
+            description="Your actual role is shown on each board card. Editors can work inside the board, while viewers stay read-only."
+            capabilities={['Open shared boards', 'See your role badge', 'Read blocked-action messaging']}
+          />
+          <Link
+            to="/roles"
+            className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:border-primary-300 dark:hover:border-primary-700"
+          >
+            <Shield className="w-4 h-4" />
+            Role Matrix
+          </Link>
         </div>
 
         {loading ? (

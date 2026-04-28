@@ -8,6 +8,7 @@ import { Board } from './pages/Board';
 import { Profile } from './pages/Profile';
 import { Invitations } from './pages/Invitations';
 import { SharedBoards } from './pages/SharedBoards';
+import { RoleMatrixPage } from './pages/RoleMatrixPage';
 
 function WorkspaceBoardsWrapper() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -93,6 +94,7 @@ function AppContent() {
           onProfileClick={() => navigate('/profile')}
         />
       } />
+      <Route path="/roles" element={<RoleMatrixPage onBack={() => navigate(-1)} onProfileClick={() => navigate('/profile')} />} />
       <Route path="/" element={<Navigate to="/workspaces" replace />} />
       <Route path="*" element={<Navigate to="/workspaces" replace />} />
     </Routes>
