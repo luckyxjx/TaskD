@@ -965,6 +965,8 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
       .sort((a, b) => a.position - b.position);
   };
 
+  const disabledActionClass = 'opacity-55 cursor-not-allowed grayscale';
+
   if (loadingBoard) {
     return (
       <div className="app-shell p-6">
@@ -1044,12 +1046,12 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                 <Shield className="w-4 h-4" />
                 {roleState.role ? `${roleState.role.charAt(0).toUpperCase() + roleState.role.slice(1)} role` : 'Checking role'}
               </span>
-              {/* Share Button - Only visible to owners */}
-              {!loadingRole && canManageBoard && (
+              {!loadingRole && (
                 <button
-                  onClick={() => setShowShareModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-all duration-200"
-                  title="Share board"
+                  onClick={() => canManageBoard && setShowShareModal(true)}
+                  disabled={!canManageBoard}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 transition-all duration-200 ${canManageBoard ? 'hover:bg-primary-200 dark:hover:bg-primary-900/50' : disabledActionClass}`}
+                  title={!canManageBoard ? 'Only board owners can manage sharing.' : 'Share board'}
                 >
                   <ShareIcon className="w-4 h-4" />
                   <span className="text-sm font-medium">Share</span>
@@ -1223,27 +1225,36 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">{list.name}</h3>
-                {canManageLists && (
+                {!loadingRole && (
                   <div className="relative">
                     <button
                       onClick={() => setShowListMenu(showListMenu === list.id ? null : list.id)}
                       className="p-2 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all"
+                      title={!canManageLists ? permissionMessage : 'List options'}
                     >
                       <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                     </button>
                     {showListMenu === list.id && (
-                      <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
+                      <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-10">
                         <button
                           onClick={() => {
+                            if (!canManageLists) return;
                             if (confirm(`Delete list "${list.name}" and all its cards?`)) {
                               deleteList(list.id);
                             }
                           }}
-                          className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+                          disabled={!canManageLists}
+                          title={!canManageLists ? permissionMessage : 'Delete list'}
+                          className={`w-full px-4 py-2 text-left text-sm flex items-center gap-3 transition-colors ${canManageLists ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20' : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
                         >
                           <Trash2 className="w-4 h-4" />
                           Delete List
                         </button>
+                        {!canManageLists && (
+                          <p className="px-4 pt-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 mt-1">
+                            {permissionMessage}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1291,15 +1302,17 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                         {getPriorityLabel(card.priority || 'medium')}
                       </span>
                     </div>
-                    {canManageCards && (
+                    {!loadingRole && (
                       <div className="flex items-center gap-1 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {quickEditingCardId === card.id ? (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              void quickUpdateCardTitle(card);
+                              if (canManageCards) void quickUpdateCardTitle(card);
                             }}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs font-semibold"
+                            disabled={!canManageCards}
+                            title={!canManageCards ? permissionMessage : 'Save quick edit'}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs font-semibold ${!canManageCards ? disabledActionClass : ''}`}
                           >
                             <Save className="w-3 h-3" />
                             Save
@@ -1308,10 +1321,13 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (!canManageCards) return;
                               setQuickEditingCardId(card.id);
                               setQuickEditTitle(card.title);
                             }}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/70 dark:bg-gray-900/70 text-gray-600 dark:text-gray-300 text-xs font-semibold"
+                            disabled={!canManageCards}
+                            title={!canManageCards ? permissionMessage : 'Quick edit card title'}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/70 dark:bg-gray-900/70 text-gray-600 dark:text-gray-300 text-xs font-semibold ${!canManageCards ? disabledActionClass : ''}`}
                           >
                             <Pencil className="w-3 h-3" />
                             Quick edit
@@ -1375,14 +1391,16 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                   </div>
                 )}
               </div>
-              {/* Add Card Button - Only visible to owners and editors */}
-              {!loadingRole && canManageCards && (
+              {!loadingRole && (
                 <button
                   onClick={() => {
+                    if (!canManageCards) return;
                     setSelectedListId(list.id);
                     setShowNewCardModal(true);
                   }}
-                  className="mt-4 flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-white/50 dark:hover:bg-gray-800/50 px-3 py-2 rounded-xl transition-all duration-200"
+                  disabled={!canManageCards}
+                  title={!canManageCards ? permissionMessage : 'Add card'}
+                  className={`mt-4 flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-200 ${canManageCards ? 'text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-white/50 dark:hover:bg-gray-800/50' : 'text-gray-400 dark:text-gray-500 cursor-not-allowed border border-dashed border-gray-200 dark:border-gray-700'}`}
                 >
                   <Plus className="w-4 h-4" />
                   <span className="text-sm font-semibold">Add card</span>
@@ -1648,35 +1666,36 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                             checked={item.completed}
                             disabled={!canManageCards}
                             onChange={() => toggleChecklistItem(item)}
+                            title={!canManageCards ? permissionMessage : 'Toggle subtask'}
                             className="w-4 h-4 rounded border-gray-300 text-primary-600"
                           />
                           <span className={`flex-1 text-sm ${item.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
                             {item.title}
                           </span>
-                          {canManageCards && (
-                            <button
-                              onClick={() => deleteChecklistItem(item)}
-                              className="opacity-0 group-hover:opacity-100 text-xs text-danger-600 dark:text-danger-400"
-                            >
-                              Remove
-                            </button>
-                          )}
+                          <button
+                            onClick={() => canManageCards && deleteChecklistItem(item)}
+                            disabled={!canManageCards}
+                            title={!canManageCards ? permissionMessage : 'Remove subtask'}
+                            className={`text-xs ${canManageCards ? 'opacity-0 group-hover:opacity-100 text-danger-600 dark:text-danger-400' : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
+                          >
+                            Remove
+                          </button>
                         </div>
                       ))
                     )}
                   </div>
-                  {canManageCards && (
-                    <div className="flex gap-2 mt-4">
-                      <input
-                        value={newChecklistTitle}
-                        onChange={(e) => setNewChecklistTitle(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addChecklistItem()}
-                        placeholder="Add subtask..."
-                        className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
-                      />
-                      <Button onClick={addChecklistItem} variant="secondary" size="sm">Add</Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2 mt-4">
+                    <input
+                      value={newChecklistTitle}
+                      onChange={(e) => setNewChecklistTitle(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && canManageCards && addChecklistItem()}
+                      placeholder={canManageCards ? 'Add subtask...' : permissionMessage}
+                      disabled={!canManageCards}
+                      title={!canManageCards ? permissionMessage : 'Add subtask'}
+                      className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                    <Button onClick={addChecklistItem} variant="secondary" size="sm" disabled={!canManageCards} title={!canManageCards ? permissionMessage : 'Add subtask'}>Add</Button>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
@@ -1699,43 +1718,44 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                               Preview <ExternalLink className="w-3 h-3" />
                             </span>
                           </a>
-                          {canManageCards && (
-                            <button
-                              onClick={() => deleteAttachment(attachment.id)}
-                              className="opacity-0 group-hover:opacity-100 text-xs text-danger-600 dark:text-danger-400"
-                            >
-                              Remove
-                            </button>
-                          )}
+                          <button
+                            onClick={() => canManageCards && deleteAttachment(attachment.id)}
+                            disabled={!canManageCards}
+                            title={!canManageCards ? permissionMessage : 'Remove attachment'}
+                            className={`text-xs ${canManageCards ? 'opacity-0 group-hover:opacity-100 text-danger-600 dark:text-danger-400' : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
+                          >
+                            Remove
+                          </button>
                         </div>
                       ))
                     )}
                   </div>
-                  {canManageCards && (
-                    <div className="space-y-2 mt-4">
+                  <div className="space-y-2 mt-4">
+                    <input
+                      value={newAttachmentName}
+                      onChange={(e) => setNewAttachmentName(e.target.value)}
+                      placeholder={canManageCards ? 'Attachment name' : permissionMessage}
+                      disabled={!canManageCards}
+                      title={!canManageCards ? permissionMessage : 'Attachment name'}
+                      className="w-full px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                    <div className="flex gap-2">
                       <input
-                        value={newAttachmentName}
-                        onChange={(e) => setNewAttachmentName(e.target.value)}
-                        placeholder="Attachment name"
-                        className="w-full px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
+                        value={newAttachmentUrl}
+                        onChange={(e) => setNewAttachmentUrl(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && canManageCards && addAttachment()}
+                        placeholder={canManageCards ? 'https://...' : permissionMessage}
+                        disabled={!canManageCards}
+                        title={!canManageCards ? permissionMessage : 'Attachment URL'}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                       />
-                      <div className="flex gap-2">
-                        <input
-                          value={newAttachmentUrl}
-                          onChange={(e) => setNewAttachmentUrl(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && addAttachment()}
-                          placeholder="https://..."
-                          className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-100 outline-none"
-                        />
-                        <Button onClick={addAttachment} variant="secondary" size="sm">Add</Button>
-                      </div>
+                      <Button onClick={addAttachment} variant="secondary" size="sm" disabled={!canManageCards} title={!canManageCards ? permissionMessage : 'Add attachment'}>Add</Button>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Action Buttons - Only visible to owners and editors */}
             {!loadingRole && canManageCards && (
               <div className="flex gap-3 justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                 <Button
@@ -1762,9 +1782,28 @@ export function Board({ boardId, onBack, onProfileClick }: BoardProps) {
                 </div>
               </div>
             )}
-            {/* View-only mode for viewers */}
             {!loadingRole && roleState.isViewer && (
-              <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex gap-3 justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex gap-3">
+                  <Button
+                    onClick={deleteCard}
+                    variant="danger"
+                    icon={Trash2}
+                    disabled
+                    title={permissionMessage}
+                  >
+                    Delete Card
+                  </Button>
+                  <Button
+                    onClick={updateCard}
+                    variant="primary"
+                    icon={Edit3}
+                    disabled
+                    title={permissionMessage}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
                 <Button
                   onClick={() => setShowCardModal(false)}
                   variant="secondary"
